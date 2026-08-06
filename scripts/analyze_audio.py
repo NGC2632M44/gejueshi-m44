@@ -102,6 +102,101 @@ def _make_source_tracking(engine, engine_version):
     }
 
 
+# ── 容器识别 / 真实元数据 / 归一化 ──
+def _sniff_container(filepath: str) -> Dict[str, Any]:
+    """按魔数识别真实容器，揪出'假 MP3'（实为 WebM/Matroska 的 YouTube 下载）。"""
+    try:
+        with open(filepath, "rb") as f:
+            head = f.read(16)
+    except Exception as e:
+        return {"container": "unknown", "error": str(e)[:200]}
+
+    if head.startswith(b"\x1a\x45\xdf\xa3"):
+        container = "webm/mkv"
+    elif head.startswith(b"ID3") or (len(head) >= 2 and head[0] == 0xFF and (head[1] & 0xE0) == 0xE0):
+        container = "mp3"
+    elif head.startswith(b"RIFF") and head[8:12] == b"WAVE":
+        container = "wav"
+    elif head[4:8] == b"ftyp":
+        container = "mp4"
+    else:
+        container = "unknown"
+
+    ext = os.path.splitext(filepath)[1].lower()
+    return {
+        "container": container,
+        "extension": ext,
+        "is_fake_mp3": ext == ".mp3" and container != "mp3",
+    }
+
+
+def _ffprobe_audio_meta(filepath: str) -> Dict[str, Any]:
+    """用 ffprobe 取真实 codec/码率/采样率（UTF-8 解码，避免 GBK 误读）。"""
+    import subprocess
+    try:
+        cmd = ["ffprobe", "-v", "quiet", "-print_format", "json",
+               "-show_format", "-show_streams", filepath]
+        r = subprocess.run(cmd, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=60)
+        if r.returncode != 0:
+            return {"error": (r.stderr or r.stdout or "")[:200]}
+        data = json.loads(r.stdout)
+        streams = [s for s in data.get("streams", []) if s.get("codec_type") == "audio"]
+        fmt = data.get("format", {})
+        if not streams:
+            return {"error": "no audio stream"}
+        s = streams[0]
+        return {
+            "codec": s.get("codec_name"),
+            "sample_rate": s.get("sample_rate"),
+            "channels": s.get("channels"),
+            "duration": fmt.get("duration"),
+            "bit_rate": fmt.get("bit_rate"),
+            "format_name": fmt.get("format_name"),
+        }
+    except Exception as e:
+        return {"error": str(e)[:200]}
+
+
+def _make_clean_wav(filepath: str, target_sr: int = DEFAULT_SAMPLE_RATE) -> str:
+    """ffmpeg 归一化为 16bit WAV 临时文件（ASCII 路径，供 sonara 与统一加载）。"""
+    import subprocess
+    import tempfile
+    fd, tmp = tempfile.mkstemp(suffix=".wav", prefix="m44_")
+    os.close(fd)
+    try:
+        cmd = ["ffmpeg", "-y", "-i", filepath, "-ar", str(target_sr),
+               "-sample_fmt", "s16", "-f", "wav", tmp]
+        r = subprocess.run(cmd, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=120)
+        if r.returncode != 0 or os.path.getsize(tmp) == 0:
+            raise RuntimeError(f"ffmpeg 转码失败: {(r.stderr or r.stdout or '')[:300]}")
+        return tmp
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _clean_json_types(obj: Any) -> Any:
+    """递归把 numpy 标量/数组转原生 JSON 类型，禁止 default=str 产生 'True' 字符串。"""
+    if isinstance(obj, dict):
+        return {k: _clean_json_types(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_clean_json_types(v) for v in obj]
+    if isinstance(obj, (np.bool_, bool)):
+        return bool(obj)
+    if isinstance(obj, np.integer):
+        return int(obj)
+    if isinstance(obj, np.floating):
+        return float(obj)
+    if isinstance(obj, np.ndarray):
+        return _clean_json_types(obj.tolist())
+    return obj
+
+
 # ═══════════════════════════════════════════════════
 #  工具函数
 # ═══════════════════════════════════════════════════
@@ -1266,7 +1361,7 @@ def analyze_batch(directory: str, output_dir: Optional[str] = None,
         os.makedirs(output_dir, exist_ok=True)
         summary_path = os.path.join(output_dir, "batch_summary.json")
         with open(summary_path, "w", encoding="utf-8") as f:
-            json.dump(results, f, ensure_ascii=False, indent=2, default=str)
+            json.dump(_clean_json_types(results), f, ensure_ascii=False, indent=2)
         print(f"\n✓ 批量分析完成。汇总: {summary_path}", file=sys.stderr)
 
     return results
@@ -1289,9 +1384,19 @@ def analyze(filepath: str, deep: bool = False, output_path: Optional[str] = None
     filepath = os.path.abspath(filepath)
     file_size_mb = round(os.path.getsize(filepath) / (1024 * 1024), 2)
 
-    # ── 检查码率 (低码率MP3警告) ──
+    # ── 容器识别 + ffprobe 真实元数据 (假 MP3 根因修复) ──
+    container = _sniff_container(filepath)
+    probe = _ffprobe_audio_meta(filepath)
+
+    # ── 码率/容器警告 ──
     bitrate_warning = None
-    if filepath.lower().endswith(".mp3"):
+    if container.get("is_fake_mp3"):
+        real_codec = probe.get("codec") or "未知编码"
+        bitrate_warning = (
+            f"文件实为 {container.get('container')} 容器（{real_codec}），并非标准 MP3；"
+            "已按真实格式记录，高频参数以 ffmpeg 转码结果为准"
+        )
+    else:
         try:
             from mutagen.mp3 import MP3
             mp3 = MP3(filepath)
@@ -1300,11 +1405,28 @@ def analyze(filepath: str, deep: bool = False, output_path: Optional[str] = None
                 bitrate_warning = f"MP3码率 {br//1000}kbps < 192kbps，高频参数可能被截断失真，禁用于高频参数计算"
         except Exception:
             pass
+        if not bitrate_warning and probe.get("codec") == "mp3" and probe.get("bit_rate"):
+            br = int(probe["bit_rate"])
+            if 0 < br < 192000:
+                bitrate_warning = f"MP3码率 {br//1000}kbps < 192kbps，高频参数可能被截断失真，禁用于高频参数计算"
+
+    # ── ffmpeg 归一化到 16bit WAV 临时文件 (ASCII 路径，供 sonara/统一加载) ──
+    temp_wav = None
+    try:
+        temp_wav = _make_clean_wav(filepath)
+    except Exception:
+        temp_wav = None
+    analysis_path = temp_wav or filepath
 
     # ── 预处理: 加载音频 (双路输出: mono for MIR, stereo for LUFS) ──
     try:
-        audio, audio_stereo, sr, dc_offset = _load_audio_mono(filepath, trim_silence=True)
+        audio, audio_stereo, sr, dc_offset = _load_audio_mono(analysis_path, trim_silence=True)
     except Exception as e:
+        if temp_wav:
+            try:
+                os.unlink(temp_wav)
+            except OSError:
+                pass
         return {"success": False, "error": f"音频加载失败: {e}", "elapsed_ms": round((time.time() - start) * 1000)}
 
     duration = len(audio) / sr
@@ -1319,11 +1441,16 @@ def analyze(filepath: str, deep: bool = False, output_path: Optional[str] = None
     except Exception:
         pass
 
-    # ── BPM: 首选 sonara (Rust 引擎, 精度远超 librosa), 回退 librosa ──
+    # ── BPM: 首选 sonara (Rust 引擎), 回退 librosa；同时收集五维证据特征 ──
     bpm_data = None
+    sonara_evidence = {}
     try:
         import sonara
-        sr_result = sonara.analyze_file(filepath, mode="playlist")
+        sr_result = sonara.analyze_file(
+            analysis_path, mode="playlist",
+            features=["key_candidates", "vocalness", "loudness", "structure"],
+            bpm_min=70.0, bpm_max=190.0,
+        )
         bpm_sonara = round(float(sr_result.get('bpm', 0)), 1) if sr_result.get('bpm') else None
         if bpm_sonara and bpm_sonara > 0:
             bpm_data = {
@@ -1333,7 +1460,7 @@ def analyze(filepath: str, deep: bool = False, output_path: Optional[str] = None
                 "bpm_octave_risk": False,
                 "bpm_deviation_risk": False,
                 "bpm_confidence_note": "sonara Rust 引擎 (multi-feature beat tracking, ~4ms/track)",
-                "bpm_method": "sonara v" + getattr(sr_result, 'get', lambda x: '0.3.5')('provenance', '0.3.5'),
+                "bpm_method": "sonara Rust engine (bpm window 70-190)",
             }
             # 同时用 sonara 的key作为 MIR 参考源
             sr_key = sr_result.get('key')
@@ -1341,10 +1468,36 @@ def analyze(filepath: str, deep: bool = False, output_path: Optional[str] = None
             sr_camelot = sr_result.get('key_camelot')
             if sr_key and not hasattr(analyze, '_sonara_key'):
                 analyze._sonara_key = {"key": sr_key, "confidence": sr_key_conf, "camelot": sr_camelot}
+        sonara_evidence = {
+            "engine_version": sr_result.get('provenance'),
+            "bpm": bpm_sonara,
+            "bpm_confidence": round(float(sr_result.get('bpm_confidence', 0) or 0), 3),
+            "bpm_candidates": sr_result.get('bpm_candidates'),
+            "key": sr_result.get('key'),
+            "key_camelot": sr_result.get('key_camelot'),
+            "key_confidence": sr_result.get('key_confidence'),
+            "key_candidates": sr_result.get('key_candidates'),
+            "predominant_chord": sr_result.get('predominant_chord'),
+            "chord_change_rate": sr_result.get('chord_change_rate'),
+            "dissonance": sr_result.get('dissonance'),
+            "chord_events": sr_result.get('chord_events'),
+            "energy": sr_result.get('energy'),
+            "danceability": sr_result.get('danceability'),
+            "valence": sr_result.get('valence'),
+            "acousticness": sr_result.get('acousticness'),
+            "vocalness": sr_result.get('vocalness'),
+            "integrated_lufs": sr_result.get('loudness_lufs'),
+            "true_peak_dbtp": sr_result.get('true_peak_db'),
+            "lra": sr_result.get('loudness_range_lu'),
+            "dynamic_range_db": sr_result.get('dynamic_range_db'),
+            "segments": sr_result.get('segments'),
+        }
     except Exception:
         pass  # sonara 不可用 (MP3解码失败/文件损坏)，静默回退到 librosa
     if bpm_data is None:
         bpm_data = _detect_bpm_librosa(audio, sr)
+    if sonara_evidence:
+        engine = "sonara+librosa"
 
     # ── 调性: Krumhansl-Schmuckler ──
     key_data = _detect_key_ks(audio, sr)
@@ -1433,19 +1586,18 @@ def analyze(filepath: str, deep: bool = False, output_path: Optional[str] = None
     else:
         analysis_status = "ok"
 
-    # ── 音频元信息 (mutagen) ──
-    audio_meta = {"original_bitrate": None, "codec": None, "is_vbr": None}
-    try:
-        from mutagen import File as MutagenFile
-        mf = MutagenFile(filepath)
-        if mf:
-            audio_meta["codec"] = type(mf).__name__.replace("MP3", "mp3").replace("FLAC", "flac").replace("MP4", "m4a").replace("OggVorbis", "ogg")
-            if hasattr(mf, 'info'):
-                audio_meta["original_bitrate"] = getattr(mf.info, 'bitrate', None)
-                if audio_meta["original_bitrate"]:
-                    audio_meta["original_bitrate"] = int(audio_meta["original_bitrate"])
-    except Exception:
-        pass
+    # ── 音频元信息 (容器识别 + ffprobe 真实值) ──
+    audio_meta = {
+        "container": container.get("container"),
+        "is_fake_mp3": container.get("is_fake_mp3", False),
+        "codec": probe.get("codec"),
+        "sample_rate": probe.get("sample_rate"),
+        "channels": probe.get("channels"),
+        "duration": probe.get("duration"),
+        "format_name": probe.get("format_name"),
+        "original_bitrate": int(probe["bit_rate"]) if probe.get("bit_rate") else None,
+        "is_vbr": None,
+    }
 
     # ── 组装结果 ──
     result = {
@@ -1463,6 +1615,9 @@ def analyze(filepath: str, deep: bool = False, output_path: Optional[str] = None
 
         # 音频元信息
         "audio_meta": audio_meta,
+
+        # sonara 原始证据 (五维评分用)
+        "sonara": sonara_evidence,
 
         # 基础元数据
         "bpm": bpm_data.get("bpm"),
@@ -1571,8 +1726,8 @@ def analyze(filepath: str, deep: bool = False, output_path: Optional[str] = None
         if tag.get("confidence") and tag["confidence"] < 0.5:
             tag["low_confidence"] = True
 
-    # ── 输出 ──
-    json_str = json.dumps(result, ensure_ascii=False, indent=2, default=str)
+    # ── 输出 (numpy 类型显式转换，禁止 default=str 产生字符串布尔) ──
+    json_str = json.dumps(_clean_json_types(result), ensure_ascii=False, indent=2)
 
     if output_path:
         with open(output_path, "w", encoding="utf-8") as f:
@@ -1586,6 +1741,12 @@ def analyze(filepath: str, deep: bool = False, output_path: Optional[str] = None
         print(json_str)
     except UnicodeEncodeError:
         sys.stdout.buffer.write(json_str.encode('utf-8') + b'\n')
+
+    if temp_wav:
+        try:
+            os.unlink(temp_wav)
+        except OSError:
+            pass
 
     return result
 
