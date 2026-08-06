@@ -1,5 +1,24 @@
 # Changelog
 
+## [3.7.0] - 2026-08-07
+
+### Added
+- Discogs Personal Access Token 接入（已实测）：实体发行版评分 / 拥有数 / 想要数 /
+  厂牌 / 格式 / 曲目 / 封面；自动修正 Step4 厂牌，Discogs 评分进入社区评分与热度
+- 网易云歌曲热度分（0-100）接入：`/api/song/detail` 实测返回 popularity，
+  计入热度星级与评分上下文
+- Step2 徽标：Discogs 评分 / 拥有 / 想要、网易云热度
+
+### Changed
+- 厂牌优先级：Discogs 详情 labels > MusicBrainz > Discogs 搜索 label
+- 格式优先级：Discogs 详情 formats > MusicBrainz > Discogs 搜索 format
+- 社区评分顺序：RYM > MusicBrainz > Discogs > Last.fm 听众推导
+- 流行度回退链：Last.fm > Discogs have/want > Apple Music trackCount
+
+### Fixed
+- Spotify 保持停用（不付费）；可用免费源已最大化利用：Last.fm / YouTube /
+  Genius / Discogs / 网易云 / LRCLIB / iTunes / MusicBrainz / Wikipedia
+
 ## [3.6.0] - 2026-08-06
 
 ### Added

@@ -47,7 +47,7 @@ python -m pytest scripts/ -q
 | [iTunes Search API](https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/index.html) | 封面/曲目/发行日期 | 无需 Key |
 | [Wikipedia API](https://www.mediawiki.org/wiki/API:Main_page) | 专辑摘要/乐评/人员/榜单 | 无需 Key |
 | [网易云音乐](https://music.163.com) | 专辑/单曲评论与收藏 | 无需 Key |
-| [Discogs](https://www.discogs.com/developers) | 实体发行版评分/厂牌/封面 | 需要 Personal Access Token（等待配置） |
+| [Discogs](https://www.discogs.com/developers) | 实体发行版评分/拥有/想要/厂牌/封面 | Personal Access Token 已配置，已接入 |
 | [Spotify](https://developer.spotify.com/dashboard) | ~~搜索/封面/热度~~ | 2026 起新 App 需 Premium（已实测 403），默认停用 |
 
 音频特征计算参考 ITU-R BS.1770-4、EBU R128、Lerch (2012) 与 Katz (2015)。

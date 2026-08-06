@@ -276,10 +276,46 @@ async function fetchDiscogsAPI(query,token) {
   // Discogs Personal Access Token（Settings → Developers → Generate token）
   // 消费者 Consumer Key 不是 PAT，直接当 token 用会返回 401。
   if(!token || token.length < 30)return null;
-  const res=await fetch(`https://api.discogs.com/database/search?q=${encodeURIComponent(query)}&type=release&per_page=10`,{headers:{"User-Agent":MB_UA,"Authorization":`Discogs token=${token}`},signal:AbortSignal.timeout(T)});
+  const headers={"User-Agent":MB_UA,"Authorization":`Discogs token=${token}`};
+  const res=await fetch(`https://api.discogs.com/database/search?q=${encodeURIComponent(query)}&type=release&per_page=10`,{headers,signal:AbortSignal.timeout(T)});
   if(!res.ok)throw new Error(`Discogs API ${res.status}`);
   const data=await res.json();
-  const results=(data.results||[]).map(r=>({title:r.title,year:r.year,format:r.format?.join(", "),label:r.label?.[0],genre:r.genre?.[0],style:r.style?.[0],country:r.country,coverImage:r.cover_image,url:r.uri?`https://www.discogs.com${r.uri}`:null})).filter(r=>r.url);
+  const scored=(data.results||[]).map(r=>({
+    item:{
+      id:r.id,title:r.title,year:r.year,format:r.format?.join(", "),label:r.label?.[0],
+      genre:r.genre?.[0],style:r.style?.[0],country:r.country,
+      coverImage:r.cover_image,url:r.uri?`https://www.discogs.com${r.uri}`:null,
+    },
+    score: rankTitleScore((r.title||"").replace(/^[^-]+-\s*/,""),query)
+      - (/(deluxe|bonus|limited|reissue|remaster)/i.test(r.title||"")?25:0),
+  })).filter(s=>s.item.url).sort((a,b)=>b.score-a.score);
+  const base=scored.map(s=>s.item);
+  const top=base.slice(0,3);
+  const details=await Promise.allSettled(top.map(r=>
+    fetch(`https://api.discogs.com/releases/${r.id}`,{headers,signal:AbortSignal.timeout(T)})
+      .then(x=>x.ok?x.json():null)
+  ));
+  const results=base.map((r,i)=>{
+    const d=details[i]?.status==="fulfilled"?details[i].value:null;
+    if(!d)return r;
+    return {
+      ...r,
+      title:d.title||r.title,
+      year:d.year||r.year,
+      label:d.labels?.[0]?.name||r.label,
+      labels:(d.labels||[]).map(l=>l.name).filter(Boolean),
+      formats:(d.formats||[]).map(f=>f.name+(f.descriptions?.length?" "+f.descriptions.join("/"):"")),
+      country:d.country||r.country,
+      coverImage:r.coverImage||d.images?.[0]?.uri||null,
+      tracklist:(d.tracklist||[]).slice(0,12).map(t=>t.title),
+      community:d.community?{
+        have:d.community.have??null,
+        want:d.community.want??null,
+        rating:d.community.rating?.average??null,
+        ratingCount:d.community.rating?.count??null,
+      }:null,
+    };
+  });
   return{results,count:results.length,source:"Discogs API"};
 }
 
@@ -557,8 +593,10 @@ function buildAggregate(r) {
   a.date=iMB?(mb?.date||it?.releaseDate):(it?.releaseDate||mb?.date);a.date||=lf?.published||dg?.results?.[0]?.year||discogsYear(r)||null;
   a.genre=mb?.tags?.[0]||it?.genre||dg?.results?.[0]?.genre||null;
   a.tags=[...new Set([...(mb?.tags||[]),...(it?.genres||[]),...(lf?.tags||[]),(dg?.results?.[0]?.style||null)])].filter(Boolean).slice(0,15);if(!a.tags?.length)a.tags=null;
-  a.labels=mb?.labels?.length?mb.labels:(dg?.results?.[0]?.label?[dg.results[0].label]:null);
-  a.formats=mb?.formats?.length?mb.formats:(dg?.results?.[0]?.format?[dg.results[0].format]:null);
+  a.labels= dg?.results?.[0]?.labels?.length ? dg.results[0].labels
+    : (mb?.labels?.length ? mb.labels : (dg?.results?.[0]?.label ? [dg.results[0].label] : null));
+  a.formats= dg?.results?.[0]?.formats?.length ? dg.results[0].formats
+    : (mb?.formats?.length ? mb.formats : (dg?.results?.[0]?.format ? [dg.results[0].format] : null));
   a.tracks=iMB?(mb?.tracks?.length?mb.tracks:it?.tracks):(it?.tracks?.length?it.tracks:mb?.tracks);
   a.tracks=a.tracks?.length?a.tracks:null;a.trackCount=a.tracks?.length||mb?.trackCount||it?.trackCount||null;
   // 封面优先级：MusicBrainz release-group 主封面（最接近“最流行版本”）> iTunes > Discogs > Last.fm > Wikipedia
@@ -574,6 +612,19 @@ function buildAggregate(r) {
       artist: lf.artist,
       artwork: lf.image,
       url: lf.url || null,
+    });
+  }
+  if (dg?.results?.[0]?.coverImage) {
+    a.albumCandidates = a.albumCandidates || [];
+    a.albumCandidates.push({
+      source: "Discogs",
+      title: dg.results[0].title,
+      artist: a.artist,
+      artwork: dg.results[0].coverImage,
+      url: dg.results[0].url,
+      have: dg.results[0].community?.have ?? null,
+      want: dg.results[0].community?.want ?? null,
+      rating: dg.results[0].community?.rating ?? null,
     });
   }
   a.summary=wp?.extract||lf?.summary||null;
@@ -598,6 +649,15 @@ function buildAggregate(r) {
     // MusicBrainz 评分 × 2 映射到 /5 制
     const mbScore = (mb.rating.score / 5) * 5;
     a.communityRating = { score: Math.round(mbScore * 10) / 10, max: 5, source: "MusicBrainz (替代 RYM)", confidence: "medium", votes: mb.rating.count };
+  } else if (dg?.results?.[0]?.community?.rating != null) {
+    const dgRating = dg.results[0].community;
+    a.communityRating = {
+      score: Math.round(dgRating.rating * 10) / 10,
+      max: 5,
+      source: "Discogs",
+      confidence: (dgRating.ratingCount || 0) >= 20 ? "high" : "medium",
+      votes: dgRating.ratingCount ?? null,
+    };
   } else if (lf?.listeners) {
     // Last.fm 听众数归一化到 /5
     const listenerScore = Math.min(5, Math.max(1, Math.log10(lf.listeners) - 2));
@@ -659,6 +719,7 @@ function buildAggregate(r) {
 
   // —— 流行度 ——
   if (lf?.listeners) a.popularity = { source:"Last.fm", listeners:lf.listeners, playcount:lf.playcount };
+  else if (dg?.results?.[0]?.community?.have != null) a.popularity = { source:"Discogs", have:dg.results[0].community.have, want:dg.results[0].community.want };
   else if (it?.trackCount) a.popularity = { source:"Apple Music", trackCount:it.trackCount };
 
   a.url=wp?.url||mb?.url||it?.url||null;
@@ -787,19 +848,31 @@ export async function getNeteaseDetail(id, type = "song") {
         }
       } catch (_) {}
     } else {
-      // 歌曲评论数 — 使用公开的评论接口 (无需加密)
+      // 歌曲评论数 + 官方热度分 (0-100)，两者并行获取
       const commentUrl = `https://music.163.com/api/v1/resource/comments/R_SO_4_${id}?limit=1`;
-      const commentRes = await fetch(commentUrl, {
-        headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://music.163.com" },
-        signal: AbortSignal.timeout(8000),
-      });
-      if (commentRes.ok) {
-        const comment = await commentRes.json();
-        if (comment.code === 200) {
-          return {
-            commentCount: comment.total || 0,
-          };
-        }
+      const detailUrl = `https://music.163.com/api/song/detail?ids=[${id}]`;
+      const [commentRes, detailRes] = await Promise.allSettled([
+        fetch(commentUrl, {
+          headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://music.163.com" },
+          signal: AbortSignal.timeout(8000),
+        }),
+        fetch(detailUrl, {
+          headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://music.163.com" },
+          signal: AbortSignal.timeout(8000),
+        }),
+      ]);
+      let commentCount = null;
+      if (commentRes.status === "fulfilled" && commentRes.value.ok) {
+        const comment = await commentRes.value.json();
+        if (comment.code === 200) commentCount = comment.total || 0;
+      }
+      let popularity = null;
+      if (detailRes.status === "fulfilled" && detailRes.value.ok) {
+        const detail = await detailRes.value.json();
+        popularity = detail.songs?.[0]?.popularity ?? null;
+      }
+      if (commentCount != null || popularity != null) {
+        return { commentCount, popularity };
       }
     }
     return null;

@@ -1054,6 +1054,35 @@ async function runResearch() {
     if (agg.date && !$("meta-year").value) $("meta-year").value = agg.date.slice(0,4);
     if (agg.labels && agg.labels.length && !$("meta-label").value) $("meta-label").value = agg.labels[0];
     if (agg.tags && agg.tags.length && !$("meta-genre").value) $("meta-genre").value = agg.tags.slice(0,4).join(", ");
+    // Discogs（已实测 PAT）：评分 / 拥有 / 想要 + 厂牌修正 + 封面候选
+    const dgTop = researchData.discogs?.results?.[0];
+    if (dgTop) {
+      if (dgTop.community?.rating != null) {
+        platformRatings.discogs = { score: dgTop.community.rating, max: 5, rating_count: dgTop.community.ratingCount };
+        strip.innerHTML += badge("Discogs", dgTop.community.rating, 5);
+      }
+      if (dgTop.community?.have != null) {
+        window._heatData.discogs_have = dgTop.community.have;
+        strip.innerHTML += badge("Discogs 拥有", dgTop.community.have.toLocaleString(), "张");
+      }
+      if (dgTop.community?.want != null) {
+        window._heatData.discogs_want = dgTop.community.want;
+        strip.innerHTML += badge("Discogs 想要", dgTop.community.want.toLocaleString(), "张");
+      }
+      if (dgTop.labels?.length && !$("meta-label").value) $("meta-label").value = dgTop.labels[0];
+      if (dgTop.coverImage) {
+        window._albumCandidates = (window._albumCandidates || []).concat([{
+          source: "Discogs",
+          title: dgTop.title,
+          artist: agg.artist,
+          artwork: dgTop.coverImage,
+          url: dgTop.url,
+          have: dgTop.community?.have ?? null,
+          want: dgTop.community?.want ?? null,
+          rating: dgTop.community?.rating ?? null,
+        }]);
+      }
+    }
     if (agg.albumCandidates) window._albumCandidates = (window._albumCandidates || []).concat(agg.albumCandidates);
     saveDraft();
 
@@ -1083,6 +1112,10 @@ async function runResearch() {
       }
       if (neSong && neSong.albumCommentCount != null) window._heatData.netease_song_album_comments = neSong.albumCommentCount;
       if (neSong && neSong.albumSubCount != null) window._heatData.netease_song_album_collections = neSong.albumSubCount;
+      if (neSong && neSong.playCount != null) {
+        window._heatData.netease_playcount = neSong.playCount;
+        strip.innerHTML += badge("网易云热度", neSong.playCount, "/100");
+      }
 
       // Last.fm 单曲听众 / 播放量（已验证 Key）
       if (cn.lastfmTrack && cn.lastfmTrack.listeners != null) {

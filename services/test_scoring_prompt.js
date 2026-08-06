@@ -36,6 +36,12 @@ test("calcHeatScore uses album/song comments and collections", () => {
 });
 
 
+test("calcHeatScore counts NetEase playcount as auxiliary heat", () => {
+  const h = calcHeatScore({ netease_playcount: 85 });
+  assert.equal(h.stars, 4);
+});
+
+
 test("calcHeatScore returns no-data when nothing is entered (missing ≠ 0)", () => {
   const h = calcHeatScore({});
   assert.equal(h.stars, 0);

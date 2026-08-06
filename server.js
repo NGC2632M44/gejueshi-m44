@@ -548,7 +548,7 @@ app.get("/api/research/chinese", async (req, res) => {
         commentCount: songDetail?.commentCount ?? null,
         albumCommentCount: songAlbumDetail?.commentCount ?? null,
         albumSubCount: songAlbumDetail?.subCount ?? null,
-        playCount: top.popular || null,
+        playCount: songDetail?.popularity ?? top.popular ?? null,
       };
     }
 

@@ -38,6 +38,9 @@
 | F32 | LRCLIB：无需 Key，plainLyrics + syncedLyrics 均返回 | verified | 本机实跑 |
 | F33 | 网易云 Louder, Please 专辑：commentCount 413 / subCount 9997；单曲 Wet & Wild 316 评论 | verified | 实跑 /api/research/chinese |
 | F34 | 版本升至 3.6.0（package.json 唯一来源） | verified | 代码核查 |
+| F35 | Discogs PAT 可用：identity 200；release detail 返回 community have/want/rating + labels/formats/tracklist | verified | 本机实跑 |
+| F36 | 网易云 /api/song/detail 返回 popularity（Wet & Wild=85） | verified | 本机实跑 |
+| F37 | 版本升至 3.7.0（package.json 唯一来源） | verified | 代码核查 |
 
 ## 未验证 / 待用户提供
 
@@ -46,7 +49,7 @@
 - U3 代理 127.0.0.1:1001 下的 Wikipedia/MusicBrainz/ADM（需代理在线）
 - U4 Demucs 分轨（未安装；默认 out_of_scope）
 - U5 Spotify 接入（需 Premium；当前 retired）
-- U6 Discogs Personal Access Token（当前只有 Consumer Key）
+- U6 ~~Discogs PAT~~ → 已解决（F35）
 
 ## 关键结论
 
