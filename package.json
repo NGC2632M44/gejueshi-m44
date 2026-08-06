@@ -1,0 +1,27 @@
+{
+  "name": "gejueshi",
+  "version": "2.0.0",
+  "description": "歌掘士 - 播客内容自动生成器",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [
+    "music",
+    "podcast",
+    "album",
+    "shownotes",
+    "ai"
+  ],
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "https-proxy-agent": "^9.1.0",
+    "node-fetch": "^3.3.2",
+    "qq-music-api": "^1.1.2",
+    "undici": "^8.10.0"
+  }
+}

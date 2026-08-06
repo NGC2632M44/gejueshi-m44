@@ -1,0 +1,27 @@
+# dependencies
+node_modules/
+
+# user media & generated artifacts
+audio/
+output/
+cover/
+backups/
+trash/
+
+# persistent user data (may contain API keys)
+data/
+
+# test artifacts
+.test-run/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# env & secrets
+.env
+.env.local
+
+# misc
+desktop.ini
+.DS_Store
+*.log

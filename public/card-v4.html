@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>歌掘士 — 声音解剖评分卡</title>
+<style>
+:root {
+  --bg: #fafaf8; --fg: #1a1a18; --fg2: #555550; --fg3: #8a8a82;
+  --line: #e0e0d8; --accent: #c41e3a; --surface: #f4f4f0;
+  --font-text: "Noto Serif SC", Georgia, "Times New Roman", serif;
+  --font-ui: "Noto Sans SC", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Cascadia Code", monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+/* ══ Page Layout ══ */
+body{background:var(--bg);color:var(--fg);font:15px/1.7 var(--font-text)}
+.page{width:750px;margin:0 auto;padding:40px 0;position:relative}
+.page-card{background:var(--bg);border:1px solid var(--fg);position:relative;overflow:hidden;margin-bottom:20px}
+.page-cover{background:var(--bg);border:1px solid var(--fg);position:relative;overflow:hidden}
+
+/* ══ Cover Background ══ */
+.cover-bg{position:absolute;inset:0;opacity:0.08;background-size:cover;background-position:center;filter:grayscale(100%) blur(2px)}
+.cover-overlay{position:relative;z-index:1}
+
+/* ══ Header ══ */
+.card-header{display:flex;align-items:center;padding:24px 28px;border-bottom:1px solid var(--fg);gap:18px;position:relative;z-index:1}
+.card-header .cover-art{width:80px;height:80px;flex-shrink:0;background:var(--surface);border:1px solid var(--line);overflow:hidden}
+.card-header .cover-art img{width:100%;height:100%;object-fit:cover}
+.card-header .info{flex:1;min-width:0}
+.card-header .artist{font:11px var(--font-mono);letter-spacing:3px;text-transform:uppercase;color:var(--fg3);margin-bottom:3px}
+.card-header .title{font:700 22px/1.2 var(--font-ui);letter-spacing:-0.3px}
+.card-header .meta{font:11px var(--font-mono);color:var(--fg3);margin-top:4px}
+.card-header .total{text-align:right;flex-shrink:0}
+.card-header .total .num{font:700 44px/1 var(--font-mono)}
+.card-header .total .lab{font:10px var(--font-mono);color:var(--fg3);letter-spacing:1px}
+
+/* ══ Heat Badge ══ */
+.heat-row{display:flex;align-items:center;gap:6px;margin-top:4px;font:10px var(--font-mono);color:var(--fg3)}
+.heat-stars{color:var(--accent);letter-spacing:1px}
+
+/* ══ Chart ══ */
+.card-chart{padding:28px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:36px;flex-wrap:wrap;justify-content:center;position:relative;z-index:1}
+
+/* ══ Scores ══ */
+.card-scores{padding:20px 28px;position:relative;z-index:1}
+.score-row{display:flex;align-items:center;padding:8px 0;border-bottom:1px dotted var(--line);gap:14px;font:13px var(--font-ui)}
+.score-row:last-child{border-bottom:none}
+.score-dim{font-weight:700;font-size:15px;min-width:28px}
+.score-dim .cn{font:10px var(--font-mono);color:var(--fg3);font-weight:400;display:block}
+.score-bar{flex:1;height:8px;background:var(--line);position:relative}
+.score-bar .fill{height:100%;background:var(--fg);transition:width 0.6s ease}
+.score-bar .fill.high{background:var(--accent)}
+.score-val{font:14px var(--font-mono);min-width:24px;text-align:right;font-weight:600}
+.score-level{font:10px var(--font-mono);color:var(--fg3);min-width:28px}
+.score-rationale{font:12px/1.6 var(--font-text);color:var(--fg2);padding:3px 0 6px 42px;font-style:italic}
+
+/* ══ Footer ══ */
+.card-footer{padding:16px 28px;border-top:1px solid var(--fg);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;position:relative;z-index:1}
+.card-footer .oneliner{font:16px/1.5 var(--font-text);font-style:italic;color:var(--fg2)}
+.card-footer .tags{display:flex;gap:4px;flex-wrap:wrap}
+.card-footer .tags span{font:10px var(--font-mono);border:1px solid var(--fg3);padding:2px 8px;color:var(--fg3)}
+.card-mark{position:absolute;top:-1px;right:-1px;background:var(--fg);color:var(--bg);font:10px var(--font-mono);padding:4px 12px;letter-spacing:3px;z-index:2}
+
+/* ══ Summary Page ══ */
+.summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:0;position:relative;z-index:1}
+.summary-item{padding:20px 24px;border-bottom:1px solid var(--line)}
+.summary-item:nth-child(odd){border-right:1px solid var(--line)}
+.summary-item .dim-name{font:600 14px var(--font-ui);margin-bottom:4px}
+.summary-item .dim-score{font:700 36px/1 var(--font-mono);color:var(--fg);margin-bottom:6px}
+.summary-item .dim-level{font:10px var(--font-mono);color:var(--accent);letter-spacing:1px}
+.summary-item .dim-text{font:13px/1.7 var(--font-text);color:var(--fg2);margin-top:6px}
+
+/* ══ Export ══ */
+.export-bar{text-align:center;padding:12px;background:var(--surface)}
+.export-bar button{font:11px var(--font-mono);letter-spacing:1px;padding:8px 18px;border:1px solid var(--fg);background:var(--fg);color:var(--bg);cursor:pointer;margin:0 4px}
+.export-bar button:hover{background:var(--bg);color:var(--fg)}
+
+/* ══ Print ══ */
+@media print{
+  body{background:#fff;padding:0}
+  .page{border:1px solid #000;page-break-after:always}
+  .export-bar{display:none}
+}
+</style>
+</head>
+<body>
+
+<div class="export-bar">
+  <button onclick="exportAllPages()">📥 导出全部图片 (PNG)</button>
+  <button onclick="exportCurrentPage()">📸 导出当前页</button>
+</div>
+
+<div id="pages"></div>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  Data Loading
+// ═══════════════════════════════════════════════════
+function getCardData() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const dataParam = urlParams.get("data");
+  if (dataParam) {
+    try { return JSON.parse(atob(dataParam)); } catch (e) {
+      try { return JSON.parse(dataParam); } catch (e2) {}
+    }
+  }
+  if (window.location.hash && window.location.hash.length > 1) {
+    try { return JSON.parse(atob(window.location.hash.slice(1))); } catch (e) {}
+  }
+  if (window.__CARD_DATA__) return window.__CARD_DATA__;
+
+  // Demo
+  return {
+    artist: "The Kills", title: "Future Starts Slow", year: "2011", label: "Domino",
+    genre: "Garage Rock / Indie Rock",
+    coverUrl: "",
+    scores: { 词: {score:10, rationale:"直白情绪宣泄，重复性强，符合车库摇滚的极简表达，但缺乏叙事深度"},
+              曲: {score:14, rationale:"riff驱动的旋律线条简洁有力，副歌记忆点强烈，小调暗色与中快节奏咬合紧密"},
+              编: {score:15, rationale:"层次分明，失真吉他与贝斯交替主导，从稀疏到密集的过渡控制精准"},
+              唱: {score:14, rationale:"Alison Mosshart从低吟到嘶吼的张力控制精准，情感传达直接且具有爆发力"},
+              混: {score:13, rationale:"保留车库的毛边感，低频控制好但高频偶有刺耳，整体温暖有质感"} },
+    totalScore: 66,
+    oneLiner: "粗粝riff驱动的压抑与爆发",
+    tags: ["车库摇滚", "独立", "indie rock"],
+    heatScore: { stars: 2, label: "★★☆☆☆" },
+    note: "评分基于 2026-08-04 听感记录 + Wikipedia 实时数据校准",
+  };
+}
+
+// ═══════════════════════════════════════════════════
+//  Render Engine
+// ═══════════════════════════════════════════════════
+function escapeHTML(str) {
+  if (!str) return "";
+  return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+function extractScore(val) {
+  if (val === null || val === undefined) return null;
+  if (typeof val === "number") return val;
+  if (typeof val === "object" && typeof val.score === "number") return val.score;
+  return null;
+}
+function extractRationale(val) {
+  if (val === null || val === undefined) return "";
+  if (typeof val === "object" && val.rationale) return val.rationale;
+  return "";
+}
+
+const dims = ["词", "曲", "编", "唱", "混"];
+const dimsEn = ["Lyrics", "Composition", "Arrangement", "Performance", "Production"];
+const maxScore = 20;
+
+function renderPentagon(scoresData, size) {
+  const cx = size/2, cy = size/2, r = size*0.4, labelR = r + 20;
+  const hasLyrics = scoresData.词 !== null && scoresData.词 !== undefined;
+  const actualDims = hasLyrics ? dims : dims.filter(d => d !== "词");
+  const actualScores = actualDims.map(d => extractScore(scoresData[d]) || 0);
+  const angleStep = (2 * Math.PI) / actualDims.length;
+  const startAngle = -Math.PI / 2;
+
+  function getPoint(i, val) {
+    const angle = startAngle + i * angleStep;
+    return { x: cx + r * (val/maxScore) * Math.cos(angle), y: cy + r * (val/maxScore) * Math.sin(angle) };
+  }
+  function getAxisEnd(i) {
+    const angle = startAngle + i * angleStep;
+    return { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) };
+  }
+
+  // Grid rings
+  let rings = "";
+  for (let ring = 1; ring <= 4; ring++) {
+    const pts = [];
+    for (let i = 0; i < actualDims.length; i++) { const p = getPoint(i, ring * 5); pts.push(`${p.x},${p.y}`); }
+    rings += `<polygon points="${pts.join(" ")}" fill="none" stroke="var(--line)" stroke-width="${ring===4?0.7:0.3}"/>`;
+  }
+
+  // Axes
+  let axes = "";
+  for (let i = 0; i < actualDims.length; i++) {
+    const end = getAxisEnd(i);
+    axes += `<line x1="${cx}" y1="${cy}" x2="${end.x}" y2="${end.y}" stroke="var(--line)" stroke-width="0.3"/>`;
+  }
+
+  // Data polygon
+  const dataPts = actualDims.map((_, i) => { const p = getPoint(i, actualScores[i]); return `${p.x},${p.y}`; });
+
+  // Labels — with score values
+  let labels = "";
+  for (let i = 0; i < actualDims.length; i++) {
+    const end = getAxisEnd(i);
+    const angle = startAngle + i * angleStep;
+    const lx = cx + labelR * Math.cos(angle);
+    const ly = cy + labelR * Math.sin(angle);
+    // 微调垂直位置使文字居中
+    const dy = i === 0 ? "0.3em" : (i === 2 || i === 3 ? "-0.2em" : "0");
+    labels += `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" dominant-baseline="central" font-family="monospace" font-size="${size>200?10:8}" fill="var(--fg2)">${actualDims[i]} ${actualScores[i]}</text>`;
+  }
+
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    ${rings}${axes}
+    <polygon points="${dataPts.join(" ")}" fill="rgba(196,30,58,0.06)" stroke="var(--accent)" stroke-width="1.5" stroke-linejoin="round"/>
+    ${labels}
+  </svg>`;
+}
+
+function renderCard(data) {
+  const { artist, title, year, label, genre, coverUrl, scores, totalScore, oneLiner, tags, heatScore, note } = data;
+  const hasLyrics = scores.词 !== null && scores.词 !== undefined;
+  const totalDisplay = hasLyrics ? `${totalScore}<span style="font-size:14px;color:var(--fg3)">/100</span>` : `${totalScore}<span style="font-size:14px;color:var(--fg3)">/80</span>`;
+
+  const coverHTML = coverUrl ? `<img src="${coverUrl}" alt="${escapeHTML(title)}" onerror="this.parentElement.innerHTML='🎵'">` : "🎵";
+  const metaParts = [year, label, genre].filter(Boolean);
+
+  const scoreRows = dims.map((dim, i) => {
+    const raw = scores[dim];
+    const val = extractScore(raw);
+    const rationale = extractRationale(raw);
+    if (val === null) {
+      if (dim === "词" && !hasLyrics) return `<div class="score-row" style="opacity:0.4"><span class="score-dim">词<span class="cn">N/A</span></span><div class="score-bar"><div class="fill" style="width:0%"></div></div><span class="score-val">—</span></div><div class="score-rationale">纯器乐 — 不适用于歌词评分</div>`;
+      return "";
+    }
+    const pct = (val/maxScore)*100;
+    const high = val >= 17 ? " high" : "";
+    const level = val >= 17 ? "突出" : val >= 14 ? "优秀" : val >= 9 ? "合格" : "短板";
+    return `<div class="score-row"><span class="score-dim">${dim}<span class="cn">${dimsEn[i]}</span></span><div class="score-bar"><div class="fill${high}" style="width:${pct}%"></div></div><span class="score-val">${val}</span><span class="score-level">${level}</span></div>${rationale?`<div class="score-rationale">${escapeHTML(rationale)}</div>`:""}`;
+  }).join("");
+
+  const heatHTML = heatScore?.stars > 0
+    ? `<div class="heat-row"><span class="heat-stars">${heatScore.label}</span><span>热度</span></div>`
+    : "";
+
+  return `<div class="page">
+    <div class="page-card">
+      <div class="card-mark">REVIEW</div>
+      ${coverUrl ? `<div class="cover-bg" style="background-image:url(${escapeHTML(coverUrl)})"></div>` : ""}
+      <div class="cover-overlay">
+        <div class="card-header">
+          <div class="cover-art">${coverHTML}</div>
+          <div class="info">
+            <div class="artist">${escapeHTML(artist)}</div>
+            <div class="title">${escapeHTML(title)}</div>
+            ${metaParts.length ? `<div class="meta">${escapeHTML(metaParts.join(" · "))}</div>` : ""}
+            ${heatHTML}
+          </div>
+          <div class="total"><span class="num">${totalDisplay}</span><span class="lab">总分</span></div>
+        </div>
+        <div class="card-chart">${renderPentagon(scores, 240)}</div>
+        <div class="card-scores">${scoreRows}</div>
+        <div class="card-footer">
+          ${oneLiner ? `<div class="oneliner">"${escapeHTML(oneLiner)}"</div>` : ""}
+          ${tags?.length ? `<div class="tags">${tags.map(t=>`<span>#${escapeHTML(t)}</span>`).join("")}</div>` : ""}
+        </div>
+      </div>
+    </div>
+    ${note ? `<div style="text-align:center;font-size:10px;color:var(--fg3);margin-top:8px;font-family:var(--font-mono)">${escapeHTML(note)}</div>` : ""}
+  </div>`;
+}
+
+function renderSummary(data) {
+  const { artist, title, year, coverUrl, scores, heatScore, oneLiner, tags } = data;
+  const coverHTML = coverUrl ? `<img src="${coverUrl}" alt="${escapeHTML(title)}" onerror="this.parentElement.innerHTML='🎵'">` : "🎵";
+
+  const summaryItems = dims.map((dim, i) => {
+    const raw = scores[dim];
+    const val = extractScore(raw);
+    const rationale = extractRationale(raw);
+    if (val === null) return "";
+    const level = val >= 17 ? "突出" : val >= 14 ? "优秀" : val >= 9 ? "合格" : "短板";
+    return `<div class="summary-item">
+      <div class="dim-name">${dim} · ${dimsEn[i]}</div>
+      <div class="dim-score">${val}<span style="font-size:14px;color:var(--fg3)">/20</span></div>
+      <div class="dim-level">${level}</div>
+      ${rationale ? `<div class="dim-text">${escapeHTML(rationale)}</div>` : ""}
+    </div>`;
+  }).filter(Boolean).join("");
+
+  const heatHTML = heatScore?.stars > 0
+    ? `<div style="text-align:center;padding:12px 24px;border-top:1px solid var(--line);font:12px var(--font-mono);color:var(--fg3)"><span style="color:var(--accent);letter-spacing:1px">${heatScore.label}</span> 热度 · 基于网易云评论/听众数</div>`
+    : "";
+
+  return `<div class="page">
+    <div class="page-card">
+      ${coverUrl ? `<div class="cover-bg" style="background-image:url(${escapeHTML(coverUrl)})"></div>` : ""}
+      <div class="cover-overlay">
+        <div style="text-align:center;padding:28px 28px 20px;border-bottom:1px solid var(--line)">
+          <div class="cover-art" style="margin:0 auto 12px;width:100px;height:100px">${coverHTML}</div>
+          <div class="artist" style="font-size:12px">${escapeHTML(artist)}</div>
+          <div class="title" style="font-size:24px;margin-top:2px">${escapeHTML(title)}</div>
+          ${year ? `<div style="font:11px var(--font-mono);color:var(--fg3);margin-top:4px">${year}</div>` : ""}
+          ${heatHTML}
+        </div>
+        <div class="summary-grid">${summaryItems}</div>
+        <div class="card-footer">
+          ${oneLiner ? `<div class="oneliner">"${escapeHTML(oneLiner)}"</div>` : ""}
+          ${tags?.length ? `<div class="tags">${tags.map(t=>`<span>#${escapeHTML(t)}</span>`).join("")}</div>` : ""}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════
+//  Render All
+// ═══════════════════════════════════════════════════
+try {
+  const data = getCardData();
+  const pages = document.getElementById("pages");
+  pages.innerHTML = renderCard(data) + renderSummary(data);
+
+  // Fetch cover from Wikipedia if not provided
+  if (!data.coverUrl && data.artist && data.title) {
+    const proxy = "https://en.wikipedia.org/w/api.php";
+    const query = encodeURIComponent(`${data.artist} ${data.title}`);
+    fetch(`${proxy}?action=query&prop=pageimages&titles=${query}&format=json&origin=*&piprop=thumbnail&pithumbsize=300`)
+      .then(r => r.json()).then(d => {
+        const page = Object.values(d?.query?.pages || {})[0];
+        if (page?.thumbnail?.source) {
+          document.querySelectorAll(".cover-art").forEach(el => el.innerHTML = `<img src="${page.thumbnail.source}" alt="">`);
+          document.querySelectorAll(".cover-bg").forEach(el => el.style.backgroundImage = `url(${page.thumbnail.source})`);
+        }
+      }).catch(() => {});
+  }
+} catch (err) {
+  document.getElementById("pages").innerHTML = `<div style="text-align:center;padding:60px;color:var(--accent)">渲染错误: ${err.message}</div>`;
+}
+
+// ═══════════════════════════════════════════════════
+//  Export
+// ═══════════════════════════════════════════════════
+async function exportAllPages() {
+  const { default: html2canvas } = await import("https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.esm.js");
+  const pages = document.querySelectorAll(".page");
+  for (let i = 0; i < pages.length; i++) {
+    const canvas = await html2canvas(pages[i], { scale: 2, backgroundColor: "#fafaf8", useCORS: true });
+    const link = document.createElement("a");
+    link.download = `scorecard-${Date.now()}-p${i+1}.png`;
+    link.href = canvas.toDataURL();
+    link.click();
+    await new Promise(r => setTimeout(r, 500));
+  }
+  alert(`已导出 ${pages.length} 页`);
+}
+
+async function exportCurrentPage() {
+  const { default: html2canvas } = await import("https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.esm.js");
+  const page = document.querySelector(".page");
+  if (!page) return;
+  const canvas = await html2canvas(page, { scale: 2, backgroundColor: "#fafaf8", useCORS: true });
+  const link = document.createElement("a");
+  link.download = `scorecard-${Date.now()}.png`;
+  link.href = canvas.toDataURL();
+  link.click();
+}
+</script>
+</body>
+</html>

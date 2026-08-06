@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>歌掘士 v3.1 — 声音解剖工作台</title>
+<style>
+:root {
+  --bg: #fafaf8; --fg: #1a1a18; --fg2: #555550; --fg3: #8a8a82;
+  --line: #e0e0d8; --accent: #c41e3a; --surface: #f4f4f0;
+  --font-text: "Noto Serif SC", Georgia, serif;
+  --font-ui: "Noto Sans SC", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Cascadia Code", monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--bg);color:var(--fg);font:15px/1.7 var(--font-text)}
+body{max-width:860px;margin:0 auto;padding:28px 20px 60px}
+
+/* Header */
+.header{border-bottom:2px solid var(--fg);padding-bottom:16px;margin-bottom:28px}
+.header h1{font:700 22px/1.3 var(--font-ui);letter-spacing:-0.3px}
+.header .sub{font:11px var(--font-mono);color:var(--fg3);margin-top:4px;letter-spacing:1px}
+
+/* Step blocks */
+.step{background:var(--surface);border:1px solid var(--line);padding:20px 24px;margin-bottom:16px}
+.step-num{font:10px var(--font-mono);color:var(--fg3);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px}
+.step-title{font:600 16px var(--font-ui);margin-bottom:12px}
+
+/* Inputs */
+input[type="text"],textarea,select{font:13px var(--font-mono);border:1px solid var(--line);background:var(--bg);color:var(--fg);padding:8px 12px;width:100%}
+input[type="text"]:focus,textarea:focus,select:focus{outline:none;border-color:var(--fg);background:var(--bg)}
+textarea{min-height:60px;resize:vertical;font-family:var(--font-text);line-height:1.6;font-size:14px}
+.field{margin-bottom:12px}
+.field label{display:block;font:11px var(--font-mono);color:var(--fg3);letter-spacing:1px;margin-bottom:4px;text-transform:uppercase}
+.row{display:flex;gap:12px;flex-wrap:wrap}
+.row .field{flex:1;min-width:180px}
+
+/* Buttons */
+.btn{font:12px var(--font-mono);letter-spacing:1px;padding:9px 20px;border:1px solid var(--fg);background:var(--fg);color:var(--bg);cursor:pointer;text-transform:uppercase}
+.btn:hover{background:var(--bg);color:var(--fg)}
+.btn.alt{background:var(--bg);color:var(--fg)}
+.btn.alt:hover{background:var(--fg);color:var(--bg)}
+.btn:disabled{opacity:0.35;cursor:not-allowed}
+.btn-row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+
+/* Results */
+.result-box{background:var(--bg);border:1px solid var(--line);padding:14px 18px;margin-top:12px;font:12px/1.6 var(--font-mono);max-height:300px;overflow-y:auto;white-space:pre-wrap;display:none}
+.result-box.show{display:block}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px}
+.stat-item{background:var(--bg);padding:10px 14px;border:1px solid var(--line)}
+.stat-item .val{font:600 18px var(--font-mono);display:block}
+.stat-item .lab{font:10px var(--font-mono);color:var(--fg3);letter-spacing:0.5px}
+
+/* Guide text */
+.guide-text{font:13px/1.8 var(--font-text);color:var(--fg2);padding:12px 0;white-space:pre-wrap}
+.guide-text h2,.guide-text h3{font-family:var(--font-ui);font-size:14px;color:var(--fg);margin:12px 0 4px}
+
+/* Ratings strip */
+.rating-strip{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px}
+.rating-badge{background:var(--bg);border:1px solid var(--line);padding:6px 12px;text-align:center;min-width:80px}
+.rating-badge .score{font:600 16px var(--font-mono)}
+.rating-badge .src{font:9px var(--font-mono);color:var(--fg3);letter-spacing:0.5px}
+.rating-badge.na{opacity:0.35}
+
+/* Card area */
+#card-area{margin-top:24px;overflow-x:auto;min-height:100px;border:1px dashed var(--line);padding:10px;display:none}
+#card-area.show{display:block;border-color:transparent;padding:0}
+#card-area .card{margin:0 auto}
+
+/* Status */
+.status{font:11px var(--font-mono);color:var(--accent);margin-top:8px;display:none}
+.status.show{display:block}
+
+/* Spinner */
+@keyframes spin{to{transform:rotate(360deg)}}
+.spinner{display:inline-block;width:12px;height:12px;border:2px solid var(--fg3);border-top-color:var(--fg);border-radius:50%;animation:spin 0.6s linear infinite;margin-right:6px;vertical-align:middle}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>歌掘士 v3.1 · 声音解剖工作台</h1>
+  <div class="sub">词·曲·编·唱·混 → 五边形雷达评分卡</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     Step 1: 音频分析
+     ═══════════════════════════════════════════════ -->
+<div class="step" id="step1">
+  <div class="step-num">Step 1</div>
+  <div class="step-title">音频客观分析</div>
+  <div class="row">
+    <div class="field" style="flex:3">
+      <label>音频文件路径 —— 相对于项目根目录或绝对路径</label>
+      <input type="text" id="audio-path" placeholder="Black Balloon - YouTube.mp3" value="Black Balloon - YouTube.mp3">
+    </div>
+  </div>
+  <div class="btn-row">
+    <button class="btn" id="btn-analyze" onclick="runAnalysis()">🔬 分析音频</button>
+    <span class="status" id="analyze-status"></span>
+  </div>
+  <div id="audio-stats" style="display:none;margin-top:12px"></div>
+  <div class="result-box" id="guide-box"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     Step 2: 平台评分参考
+     ═══════════════════════════════════════════════ -->
+<div class="step" id="step2">
+  <div class="step-num">Step 2</div>
+  <div class="step-title">平台评分参考（校准锚点）</div>
+  <div class="row">
+    <div class="field" style="flex:3">
+      <label>搜索 —— 专辑名+艺术家（用于搜索各平台评分）</label>
+      <input type="text" id="research-query" placeholder="Midnight Boom The Kills">
+    </div>
+  </div>
+  <div class="btn-row">
+    <button class="btn alt" id="btn-research" onclick="runResearch()">🔍 搜索评分</button>
+    <span class="status" id="research-status"></span>
+  </div>
+  <div id="rating-strip" class="rating-strip" style="display:none;margin-top:12px"></div>
+
+  <div style="margin-top:12px;padding:12px;background:var(--bg);border:1px solid var(--line)">
+    <div style="font:11px var(--font-mono);color:var(--fg2);letter-spacing:1px;margin-bottom:8px">📋 RYM 手动输入（打开 rateyourmusic.com 对照填写）</div>
+    <div class="row">
+      <div class="field"><label>RYM 评分 /5</label><input type="text" id="plat-rym" placeholder="3.88"></div>
+      <div class="field"><label>评分人数</label><input type="text" id="plat-rym-count" placeholder="1500"></div>
+      <div class="field"><label>RYM 流派</label><input type="text" id="plat-rym-genres" placeholder="Indie Rock, Garage Rock"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>AOTY 用户 /100</label><input type="text" id="plat-aoty" placeholder="85"></div>
+      <div class="field"><label>AOTY 乐评 /100</label><input type="text" id="plat-aoty-critic" placeholder="76"></div>
+      <div class="field"><label>Discogs 评分 /5</label><input type="text" id="plat-discogs" placeholder="4.2"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>QQ音乐 评分 /10</label><input type="text" id="plat-qq" placeholder="8.5"></div>
+      <div class="field"><label>QQ音乐 评论数</label><input type="text" id="plat-qq-comments" placeholder="133"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     Step 3: 你的听感（主观输入）
+     ═══════════════════════════════════════════════ -->
+<div class="step" id="step3">
+  <div class="step-num">Step 3</div>
+  <div class="step-title">你的主观听感</div>
+  <p style="font:12px/1.5 var(--font-text);color:var(--fg3);margin-bottom:12px">
+    先看上面的听歌指引，然后边听边写。不必每项都填，但越详细评分越准。
+  </p>
+
+  <div class="field">
+    <label>编曲 —— 整体编曲是稀疏/适中/密集？有没有让你印象深刻的器乐编排细节？</label>
+    <textarea id="note-arrangement" rows="2" placeholder="例如：失真吉他在副歌突然收窄，让贝斯跳出来——这个切换很聪明..."></textarea>
+  </div>
+  <div class="field">
+    <label>人声/演奏 —— 表现是否打动你？有没有哪个音符/句子让你想倒回去重听？</label>
+    <textarea id="note-performance" rows="2" placeholder="例如：第二段主歌的尾音处理得特别克制，有种危险的性感..."></textarea>
+  </div>
+  <div class="field">
+    <label>制作 —— 整体声音质感是 [干净通透 / 温暖模拟 / 粗糙有毛边 / 空间感强 / 压缩过重]？</label>
+    <textarea id="note-production" rows="2" placeholder="例如：混音保留了车库该有的颗粒感，但低频控制得很好..."></textarea>
+  </div>
+  <div class="field">
+    <label>记忆点 —— 这首歌最好的部分是？最差（或可改进）的部分是？</label>
+    <textarea id="note-highlight" rows="2" placeholder="例如：最好的部分是bridge段的节奏变化；主歌略显拖沓..."></textarea>
+  </div>
+  <div class="field">
+    <label>类似作品 —— 让你想起哪些其他艺术家或专辑？</label>
+    <textarea id="note-similar" rows="1" placeholder="例如：有早期 Yeah Yeah Yeahs 的影子，但制作更干净..."></textarea>
+  </div>
+  <div class="field">
+    <label>歌词感受（如果是纯器乐可跳过）</label>
+    <textarea id="note-lyrics" rows="2" placeholder="例如：歌词有叙事感，副歌那句 \`xxx\` 很抓人..."></textarea>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     Step 4: 生成评分卡
+     ═══════════════════════════════════════════════ -->
+<div class="step" id="step4">
+  <div class="step-num">Step 4</div>
+  <div class="step-title">生成五维评分卡</div>
+  <div class="row">
+    <div class="field"><label>艺术家</label><input type="text" id="meta-artist" placeholder="The Kills"></div>
+    <div class="field"><label>专辑/歌曲</label><input type="text" id="meta-title" placeholder="Midnight Boom"></div>
+    <div class="field"><label>年份</label><input type="text" id="meta-year" placeholder="2008"></div>
+  </div>
+  <div class="row">
+    <div class="field"><label>厂牌</label><input type="text" id="meta-label" placeholder="Domino"></div>
+    <div class="field"><label>流派</label><input type="text" id="meta-genre" placeholder="Garage Rock"></div>
+  </div>
+  <div class="btn-row">
+    <button class="btn" id="btn-score" onclick="runScoring()">🎯 生成评分 & 卡片</button>
+    <span class="status" id="score-status"></span>
+  </div>
+  <div id="card-area"></div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  State
+// ═══════════════════════════════════════════════════
+let audioFeatures = null;
+let platformRatings = null;
+let researchData = null;
+const API = "http://localhost:3001";
+
+// ═══════════════════════════════════════════════════
+//  Step 1: 音频分析
+// ═══════════════════════════════════════════════════
+async function runAnalysis() {
+  let path = document.getElementById("audio-path").value.trim();
+  // 自动剥离 Windows 复制文件时带上的双引号
+  if ((path.startsWith('"') && path.endsWith('"')) || (path.startsWith("'") && path.endsWith("'"))) {
+    path = path.slice(1, -1).trim();
+    document.getElementById("audio-path").value = path;
+  }
+  if (!path) return alert("请输入音频文件路径");
+
+  const status = document.getElementById("analyze-status");
+  const btn = document.getElementById("btn-analyze");
+  status.className = "status show";
+  status.innerHTML = '<span class="spinner"></span>分析中...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch(`${API}/api/analyze`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({audioPath: path})
+    });
+    const data = await res.json();
+
+    if (!data.success) {
+      status.textContent = "❌ " + data.error;
+      btn.disabled = false;
+      return;
+    }
+
+    audioFeatures = data.audioFeatures;
+
+    // Show stats
+    const af = audioFeatures;
+    document.getElementById("audio-stats").style.display = "block";
+    document.getElementById("audio-stats").innerHTML = `
+      <div class="stat-grid">
+        <div class="stat-item"><span class="val">${af.bpm || "?"}</span><span class="lab">BPM</span></div>
+        <div class="stat-item"><span class="val">${af.key || "?"}</span><span class="lab">调性</span></div>
+        <div class="stat-item"><span class="val">${af.duration_seconds ? Math.floor(af.duration_seconds/60)+":"+String(Math.round(af.duration_seconds%60)).padStart(2,"0") : "?"}</span><span class="lab">时长</span></div>
+        <div class="stat-item"><span class="val">${af.spectral?.centroid_mean ? Math.round(af.spectral.centroid_mean) : "?"}</span><span class="lab">频谱质心 (Hz)</span></div>
+        <div class="stat-item"><span class="val">${af.dynamics?.energy_range ? (af.dynamics.energy_range*1000).toFixed(0)+"‰" : "?"}</span><span class="lab">动态幅度</span></div>
+        <div class="stat-item"><span class="val">${af.engine || "?"}</span><span class="lab">分析引擎</span></div>
+      </div>`;
+
+    // Show listening guide
+    const guideBox = document.getElementById("guide-box");
+    guideBox.className = "result-box show";
+    guideBox.innerHTML = `<div class="guide-text">${escapeHTML(data.listeningGuide)}</div>`;
+
+    // Auto-fill research query
+    if (!document.getElementById("research-query").value.trim()) {
+      const fn = af.file || "";
+      const name = fn.replace(/\.[^.]+$/, "").replace(/[-_]/g, " ").replace(/YouTube/i, "").trim();
+      if (name) document.getElementById("research-query").value = name;
+    }
+
+    status.textContent = "✅ 分析完成";
+    status.style.color = "var(--fg2)";
+  } catch (e) {
+    status.textContent = "❌ " + e.message;
+  }
+  btn.disabled = false;
+}
+
+// ═══════════════════════════════════════════════════
+//  Step 2: 平台评分搜索（AI优先 + DDG备选）
+// ═══════════════════════════════════════════════════
+async function runResearch() {
+  const query = document.getElementById("research-query").value.trim();
+  if (!query) return alert("请输入专辑名+艺术家");
+
+  const status = document.getElementById("research-status");
+  const btn = document.getElementById("btn-research");
+  const strip = document.getElementById("rating-strip");
+  status.className = "status show";
+  btn.disabled = true;
+
+  // 自动检测查询类型
+  const isSong = query.split(/[-—–]/).length === 2 &&
+    query.split(/[-—–]/)[0].trim().split(/\s+/).length <= 4;
+  const searchType = isSong ? "song" : "album";
+
+  // =============================================
+  // 搜索真实数据: Wikipedia + MusicBrainz (实时 API，不是训练数据)
+  // =============================================
+  status.innerHTML = '<span class="spinner"></span>搜索 Wikipedia + MusicBrainz...';
+  platformRatings = {};
+  window._heatData = {};
+
+  try {
+    // Wikipedia/MusicBrainz 研究 (实时 API)
+    const ddgRes = await fetch(`${API}/api/research?q=${encodeURIComponent(query)}`);
+    researchData = await ddgRes.json();
+    const agg = researchData.aggregate || {};
+
+    strip.style.display = "flex";
+    strip.innerHTML = "";
+
+    // 显示 Wikipedia 实时提取的评分 (不是训练数据)
+    if (agg.reviewScores) {
+      const rs = agg.reviewScores;
+      if (rs.pitchfork) { strip.innerHTML += badge("Pitchfork", rs.pitchfork.score, rs.pitchfork.max); platformRatings.pitchfork = rs.pitchfork; }
+      if (rs.metacritic) { strip.innerHTML += badge("Metacritic", rs.metacritic.score, rs.metacritic.max); platformRatings.metacritic = rs.metacritic; }
+      if (rs.allmusic) { strip.innerHTML += badge("AllMusic", rs.allmusic.score, rs.allmusic.max); }
+      if (rs.nme) { strip.innerHTML += badge("NME", rs.nme.score, rs.nme.max); }
+    }
+
+    // 流派来自 MusicBrainz/Last.fm (实时 API)
+    if (agg.tags?.length) {
+      strip.innerHTML += `<div class="rating-badge"><div class="score" style="font-size:12px">${agg.tags.slice(0,3).join("/")}</div><div class="src">流派</div></div>`;
+    }
+    if (agg.date) {
+      strip.innerHTML += `<div class="rating-badge"><div class="score" style="font-size:13px">${agg.date.slice(0,4)}</div><div class="src">年份</div></div>`;
+    }
+
+    // 自动填充元数据 (来自 Wikipedia/MusicBrainz 实时数据)
+    if (agg.artist && !document.getElementById("meta-artist").value) document.getElementById("meta-artist").value = agg.artist;
+    if (agg.title && !document.getElementById("meta-title").value) document.getElementById("meta-title").value = agg.title;
+    if (agg.date && !document.getElementById("meta-year").value) document.getElementById("meta-year").value = agg.date.slice(0,4);
+    if (agg.labels?.length && !document.getElementById("meta-label").value) document.getElementById("meta-label").value = agg.labels[0];
+    if (agg.tags?.length && !document.getElementById("meta-genre").value) document.getElementById("meta-genre").value = agg.tags.slice(0,4).join(", ");
+
+    const ratingCount = Object.keys(platformRatings).length;
+    if (ratingCount > 0) {
+      status.textContent = `✅ Wikipedia 实时数据: ${ratingCount} 个专业评分 | ${agg.artist || "?"} — ${agg.title || "?"}`;
+      status.style.color = "var(--fg2)";
+    } else {
+      status.textContent = "⚠️ Wikipedia 无专业评分 — 请手动输入 RYM/其他平台评分";
+      status.style.color = "var(--accent)";
+    }
+
+    // 同步查 AI 热度 + 中国平台
+    fetchAIHeat(query);
+    fetchChinesePlatforms(query);
+  } catch (e) {
+    status.textContent = "⚠️ 搜索失败: " + (e.message || "网络错误").slice(0, 50);
+    status.style.color = "var(--accent)";
+  }
+  btn.disabled = false;
+}
+
+function badge(label, score, max) {
+  const pct = Math.round(score / max * 100);
+  return `<div class="rating-badge"><div class="score">${score}/${max}</div><div class="src">${label} (${pct}%)</div></div>`;
+}
+
+async function fetchAIHeat(query) {
+  try {
+    const aiRes = await fetch(`${API}/api/research/ai?q=${encodeURIComponent(query)}`);
+    const aiData = await aiRes.json();
+    if (aiData.success && aiData.heat) {
+      // 热度数据存入 window._heatData 供评分时使用
+      window._heatData = aiData.heat;
+      if (aiData.artist && !document.getElementById("meta-artist").value) document.getElementById("meta-artist").value = aiData.artist;
+      if (aiData.title && !document.getElementById("meta-title").value) document.getElementById("meta-title").value = aiData.title;
+      if (aiData.year && !document.getElementById("meta-year").value) document.getElementById("meta-year").value = String(aiData.year);
+    }
+  } catch (e) { console.log("AI heat fetch failed:", e.message); }
+}
+
+async function fetchChinesePlatforms(query) {
+  try {
+    const res = await fetch(`${API}/api/research/chinese?q=${encodeURIComponent(query)}`);
+    const data = await res.json();
+    if (!data.success) return;
+
+    // 初始化 window 级别的 heat 对象
+    if (!window._heatData) window._heatData = {};
+
+    const strip = document.getElementById("rating-strip");
+    if (data.netease) {
+      const ne = data.netease;
+      strip.innerHTML += `<div class="rating-badge"><div class="score">${ne.commentCount||0}</div><div class="src">网易云评论</div></div>`;
+      if (ne.commentCount) window._heatData.netease_comments = ne.commentCount;
+      if (ne.playCount) window._heatData.netease_playcount = ne.playCount;
+    }
+    if (data.qq) {
+      const qq = data.qq;
+      strip.innerHTML += `<div class="rating-badge"><div class="score">${qq.commentCount||0}</div><div class="src">QQ音乐评论</div></div>`;
+      if (qq.commentCount) window._heatData.qq_music_comments = qq.commentCount;
+    }
+  } catch (e) {
+    console.log("Chinese platform fetch failed:", e.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  Step 4: 评分 + 生成卡片
+// ═══════════════════════════════════════════════════
+async function runScoring() {
+  if (!audioFeatures) return alert("请先完成 Step 1 音频分析");
+
+  const status = document.getElementById("score-status");
+  const btn = document.getElementById("btn-score");
+  status.className = "status show";
+  status.innerHTML = '<span class="spinner"></span>DeepSeek 评分中...';
+  btn.disabled = true;
+
+  // Gather subjective notes
+  const notes = [];
+  const arr = document.getElementById("note-arrangement").value.trim();
+  const perf = document.getElementById("note-performance").value.trim();
+  const prod = document.getElementById("note-production").value.trim();
+  const hl = document.getElementById("note-highlight").value.trim();
+  const sim = document.getElementById("note-similar").value.trim();
+  const lyr = document.getElementById("note-lyrics").value.trim();
+
+  if (arr) notes.push(`【编曲】${arr}`);
+  if (perf) notes.push(`【人声/演奏】${perf}`);
+  if (prod) notes.push(`【制作】${prod}`);
+  if (hl) notes.push(`【记忆点】${hl}`);
+  if (sim) notes.push(`【类似作品】${sim}`);
+  if (lyr) notes.push(`【歌词】${lyr}`);
+  const listeningNotes = notes.join("\n\n") || "（未提供听感笔记）";
+
+  // Gather manual platform ratings (RYM + AOTY + Discogs + QQ)
+  const pr = platformRatings || {};
+  const rymVal = parseFloat(document.getElementById("plat-rym").value);
+  const rymCount = parseInt(document.getElementById("plat-rym-count").value) || null;
+  const rymGenres = document.getElementById("plat-rym-genres").value.trim();
+  const aotyVal = parseFloat(document.getElementById("plat-aoty").value);
+  const aotyCritic = parseFloat(document.getElementById("plat-aoty-critic").value);
+  const discogsVal = parseFloat(document.getElementById("plat-discogs").value);
+  const qqVal = parseFloat(document.getElementById("plat-qq").value);
+  const qqComments = parseInt(document.getElementById("plat-qq-comments").value) || null;
+
+  if (rymVal) pr.rym = {score: rymVal, max: 5, rating_count: rymCount};
+  if (aotyVal) pr.aoty = {score: aotyVal, max: 100};
+  if (aotyCritic) pr.aoty_critic = {score: aotyCritic, max: 100};
+  if (discogsVal) pr.discogs = {score: discogsVal, max: 5};
+  if (qqVal) pr.qq = {score: qqVal, max: 10};
+
+  // 更新热度数据
+  if (!window._heatData) window._heatData = {};
+  if (qqComments) window._heatData.qq_music_comments = qqComments;
+  if (rymCount) window._heatData.rym_rating_count = rymCount;
+
+  // RYM 流派覆盖元数据
+  if (rymGenres && !document.getElementById("meta-genre").value) {
+    document.getElementById("meta-genre").value = rymGenres;
+  }
+
+  // Album metadata
+  const metadata = {
+    artist: document.getElementById("meta-artist").value.trim(),
+    title: document.getElementById("meta-title").value.trim(),
+    release_date: document.getElementById("meta-year").value.trim(),
+    label: document.getElementById("meta-label").value.trim(),
+    genres: document.getElementById("meta-genre").value.trim().split(/[,，、]/).map(s=>s.trim()).filter(Boolean),
+  };
+
+  try {
+    // Step A: Get scores
+    const scoreRes = await fetch(`${API}/api/analyze/score`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        audioFeatures,
+        listeningAnswers: listeningNotes,
+        albumMetadata: metadata,
+        platformRatings: Object.keys(pr).length > 0 ? pr : undefined,
+        researchData,
+        heat: window._heatData || undefined,
+      })
+    });
+    const scoreData = await scoreRes.json();
+
+    if (!scoreData.success) {
+      status.textContent = "❌ " + scoreData.error;
+      btn.disabled = false;
+      return;
+    }
+
+    // Step B: Render card
+    const cardRes = await fetch(`${API}/api/card/v4`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        artist: metadata.artist || "Unknown",
+        title: metadata.title || audioFeatures.file || "Unknown",
+        year: metadata.release_date || "",
+        label: metadata.label || "",
+        genre: (metadata.genres || []).join(", "),
+        scores: scoreData.scores,
+        totalScore: scoreData.scores.totalScore,
+        oneLiner: scoreData.scores.oneLiner || "",
+        tags: scoreData.scores.tags || [],
+        coverUrl: researchData?.aggregate?.artwork || "",
+        heat: {
+          netease_comments: window._heatData?.netease_comments || 0,
+          qq_music_comments: window._heatData?.qq_music_comments || 0,
+          lastfm_listeners: window._heatData?.lastfm_listeners || 0,
+        },
+        note: `评分基于 ${new Date().toLocaleDateString('zh-CN').replace(/\//g,'-')} 听感记录 + Wikipedia 实时数据校准`,
+      })
+    });
+    const cardHTML = await cardRes.text();
+
+    const cardArea = document.getElementById("card-area");
+    cardArea.innerHTML = cardHTML;
+    cardArea.classList.add("show");
+    status.textContent = `✅ 总分 ${scoreData.scores.totalScore} | ${scoreData.scores.oneLiner || ""}`;
+    status.style.color = "var(--fg2)";
+
+    // Scroll to card
+    cardArea.scrollIntoView({behavior: "smooth", block: "start"});
+
+    // Also add a download link
+    const blob = new Blob([cardHTML], {type: "text/html;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+    const downloadLink = document.createElement("div");
+    downloadLink.style.cssText = "text-align:center;margin-top:12px;font:11px var(--font-mono)";
+    downloadLink.innerHTML = `<a href="${url}" download="scorecard-${Date.now()}.html" style="color:var(--fg2)">📥 下载卡片 HTML</a> · <a href="${url}" target="_blank" style="color:var(--fg2)">🔗 新窗口打开</a>`;
+    cardArea.appendChild(downloadLink);
+  } catch (e) {
+    status.textContent = "❌ " + e.message;
+  }
+  btn.disabled = false;
+}
+
+// ═══════════════════════════════════════════════════
+//  Helper
+// ═══════════════════════════════════════════════════
+function escapeHTML(str) {
+  if (!str) return "";
+  return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// Auto-detect if server is Python-capable
+(async function init() {
+  try {
+    const res = await fetch(`${API}/api/status`);
+    const data = await res.json();
+    console.log("歌掘士", data.version, "| DeepSeek:", data.deepseekKey ? "OK" : "MISSING");
+  } catch(e) {
+    console.log("服务器未连接:", e.message);
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1641 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M44 v5 — 声音解剖工作台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700;900&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #14110d; --bg-2: #1b1712; --panel: #201b15; --panel-2: #262019;
+  --ink: #f0eadd; --ink-2: #b5ac9a; --ink-3: #7d7565;
+  --line: #383127; --line-soft: #2c2620;
+  --accent: #e0405a; --accent-deep: #c41e3a; --gold: #c9a24d;
+  --paper: #faf7f1;
+  --f-serif: "Noto Serif SC", "Songti SC", Georgia, serif;
+  --f-sans: "Noto Sans SC", -apple-system, "PingFang SC", sans-serif;
+  --f-mono: "SF Mono", "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:
+    radial-gradient(1000px 420px at 85% -5%, rgba(196,30,58,.10), transparent 55%),
+    radial-gradient(800px 500px at -10% 40%, rgba(201,162,77,.05), transparent 60%),
+    var(--bg);
+  color:var(--ink);font:15px/1.7 var(--f-sans);min-height:100vh;
+}
+::selection{background:var(--accent-deep);color:#fff}
+
+/* Masthead */
+.masthead{max-width:1180px;margin:0 auto;padding:34px 28px 26px;display:flex;align-items:flex-end;
+  justify-content:space-between;gap:16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.masthead .brand h1{font:900 34px/1.1 var(--f-serif);letter-spacing:2px}
+.masthead .brand h1 em{font-style:normal;color:var(--accent)}
+.masthead .brand .sub{font:10px var(--f-mono);letter-spacing:4px;color:var(--ink-3);margin-top:6px}
+.status-pill{display:flex;align-items:center;gap:8px;font:10px var(--f-mono);letter-spacing:2px;
+  color:var(--ink-2);border:1px solid var(--line);border-radius:99px;padding:8px 16px;background:var(--bg-2)}
+.status-pill .dot{width:8px;height:8px;border-radius:50%;background:var(--ink-3)}
+.status-pill.ok .dot{background:#4caf7d;box-shadow:0 0 8px rgba(76,175,125,.7)}
+.status-pill.bad .dot{background:var(--accent);box-shadow:0 0 8px rgba(224,64,90,.7)}
+.draft-indicator{position:fixed;bottom:16px;right:20px;z-index:98;font:9px var(--f-mono);
+  letter-spacing:1px;color:var(--ink-3);opacity:0;transition:opacity .4s;pointer-events:none}
+.draft-indicator.show{opacity:.6}
+
+/* Layout */
+.layout{max-width:1180px;margin:0 auto;padding:32px 28px 80px;display:grid;grid-template-columns:210px 1fr;gap:36px}
+.rail{position:sticky;top:28px;align-self:start;display:flex;flex-direction:column;gap:4px}
+.rail-item{display:flex;gap:12px;align-items:flex-start;padding:12px 10px;border-left:2px solid var(--line);
+  cursor:pointer;transition:all .25s;text-decoration:none;color:var(--ink-2)}
+.rail-item .no{font:11px var(--f-mono);color:var(--ink-3);letter-spacing:1px;padding-top:2px}
+.rail-item .nm{font:600 13px var(--f-sans)}
+.rail-item .st{font:9px var(--f-mono);letter-spacing:2px;color:var(--ink-3);margin-top:2px}
+.rail-item:hover{border-left-color:var(--ink-3);color:var(--ink)}
+.rail-item.active{border-left-color:var(--accent);color:var(--ink)}
+.rail-item.active .no{color:var(--accent)}
+.rail-item.done .st{color:#4caf7d}
+
+/* Panels */
+.panel{background:linear-gradient(180deg, var(--panel), var(--bg-2));border:1px solid var(--line);
+  border-radius:14px;margin-bottom:26px;overflow:hidden;scroll-margin-top:24px;
+  animation:panelIn .5s cubic-bezier(.22,1,.36,1) both}
+@keyframes panelIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.panel-head{display:flex;align-items:baseline;gap:14px;padding:20px 26px 16px;border-bottom:1px solid var(--line-soft)}
+.panel-head .no{font:11px var(--f-mono);color:var(--accent);letter-spacing:2px}
+.panel-head h2{font:700 17px var(--f-serif);letter-spacing:1px}
+.panel-head .hint{font:10px var(--f-mono);color:var(--ink-3);letter-spacing:1px;margin-left:auto}
+.panel-body{padding:22px 26px 26px}
+
+/* Inputs */
+.field{margin-bottom:14px}
+.field label{display:block;font:10px var(--f-mono);color:var(--ink-3);letter-spacing:1.5px;margin-bottom:6px;text-transform:uppercase}
+input[type="text"],textarea{
+  font:13px var(--f-mono);border:1px solid var(--line);background:var(--bg);color:var(--ink);
+  padding:10px 14px;width:100%;border-radius:8px;transition:border-color .2s, box-shadow .2s}
+input[type="text"]:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(224,64,90,.12)}
+textarea{font-family:var(--f-sans);font-size:14px;line-height:1.7;resize:vertical;min-height:56px}
+.row{display:flex;gap:14px;flex-wrap:wrap}
+.row .field{flex:1;min-width:160px}
+
+/* Buttons */
+.btn{font:12px var(--f-mono);letter-spacing:2px;padding:12px 26px;border-radius:99px;cursor:pointer;
+  border:1px solid var(--accent-deep);background:linear-gradient(135deg,var(--accent),var(--accent-deep));
+  color:#fff;transition:all .2s;text-transform:uppercase}
+.btn:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(196,30,58,.35)}
+.btn:active{transform:translateY(0)}
+.btn.ghost{background:none;border-color:var(--line);color:var(--ink-2)}
+.btn.ghost:hover{border-color:var(--ink-2);color:var(--ink);box-shadow:none}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
+.btn-row{display:flex;gap:10px;align-items:center;margin-top:6px;flex-wrap:wrap}
+
+@keyframes spin{to{transform:rotate(360deg)}}
+.spinner{display:inline-block;width:11px;height:11px;border:2px solid rgba(255,255,255,.35);
+  border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;vertical-align:-1px;margin-right:6px}
+.inline-status{font:11px var(--f-mono);letter-spacing:1px;color:var(--ink-2)}
+.inline-status.err{color:var(--accent)}
+.inline-status.ok{color:#4caf7d}
+
+/* Stat tiles */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:18px}
+.stat{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:var(--bg);
+  animation:riseIn .5s both}
+.stat:nth-child(2){animation-delay:.05s}.stat:nth-child(3){animation-delay:.1s}
+.stat:nth-child(4){animation-delay:.15s}.stat:nth-child(5){animation-delay:.2s}.stat:nth-child(6){animation-delay:.25s}
+.stat .v{font:700 22px var(--f-mono);color:var(--ink)}
+.stat .v small{font-size:11px;color:var(--ink-3);font-weight:400}
+.stat .l{font:9px var(--f-mono);letter-spacing:2px;color:var(--ink-3);text-transform:uppercase;margin-top:3px}
+@keyframes riseIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+/* Listening guide */
+.guide{margin-top:18px;border:1px solid var(--line);border-left:3px solid var(--gold);border-radius:10px;
+  background:var(--bg);padding:18px 22px;font:14px/1.9 var(--f-serif);color:var(--ink-2);
+  max-height:340px;overflow-y:auto;white-space:pre-wrap}
+.guide h2,.guide h3{font-family:var(--f-serif);font-size:15px;color:var(--ink);margin:14px 0 6px}
+.guide::-webkit-scrollbar{width:6px}
+.guide::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
+
+/* Rating badges */
+.badges{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+.badge{border:1px solid var(--line);border-radius:10px;background:var(--bg);padding:10px 16px;
+  text-align:center;min-width:92px;animation:riseIn .4s both}
+.badge .s{font:700 18px var(--f-mono);color:var(--ink)}
+.badge .s em{font:10px var(--f-mono);font-style:normal;color:var(--ink-3)}
+.badge .k{font:9px var(--f-mono);letter-spacing:1.5px;color:var(--ink-3);margin-top:3px;text-transform:uppercase}
+.badge.accent{border-color:var(--accent-deep)}
+.badge.accent .s{color:var(--accent)}
+
+/* Cover preview */
+.cover-preview{display:flex;gap:16px;align-items:center;margin-top:16px;border:1px dashed var(--line);
+  border-radius:10px;padding:14px 16px;background:var(--bg)}
+.cover-preview img{width:72px;height:72px;object-fit:cover;border-radius:6px;border:1px solid var(--line)}
+.cover-preview .info{font:11px var(--f-mono);color:var(--ink-3);letter-spacing:1px;line-height:1.8}
+.cover-preview .info b{color:var(--ink-2);font-size:13px}
+.cover-manual{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
+.cover-manual input{flex:1;min-width:200px;font-size:11px}
+.cover-manual .btn-xs{font:10px var(--f-mono);letter-spacing:1px;padding:6px 14px;border-radius:99px;
+  cursor:pointer;border:1px solid var(--line);background:var(--bg);color:var(--ink-2);
+  transition:all .2s}
+.cover-manual .btn-xs:hover{border-color:var(--accent);color:var(--ink)}
+.cover-manual .btn-xs.used{border-color:#4caf7d;color:#4caf7d}
+.verify-panel{margin-top:18px;border:1px solid var(--line);border-left:3px solid var(--gold);border-radius:10px;
+  background:var(--bg);padding:16px 18px}
+.verify-head{font:700 14px var(--f-sans);color:var(--gold);margin-bottom:4px;letter-spacing:1px}
+.verify-panel .detected{font:10px var(--f-mono);color:var(--ink-3);margin-left:8px}
+.verify-panel .detected::before{content:"检测: "}
+.verify-panel .ref{font:10px var(--f-mono);color:#4caf7d;margin-left:8px}
+.verify-panel .ref::before{content:"参考: "}
+
+/* Manual inputs */
+details.manual{margin-top:18px;border:1px solid var(--line);border-radius:10px;background:var(--bg)}
+details.manual summary{cursor:pointer;padding:14px 18px;font:11px var(--f-mono);letter-spacing:2px;
+  color:var(--ink-2);list-style:none;user-select:none}
+details.manual summary::before{content:"＋ ";color:var(--accent)}
+details.manual[open] summary::before{content:"－ "}
+details.manual .inner{padding:4px 18px 18px;border-top:1px solid var(--line-soft)}
+details.manual .tip{font:11px/1.7 var(--f-sans);color:var(--ink-3);margin:10px 0 14px}
+
+/* Notes grid */
+.notes-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.notes-grid .field.full{grid-column:1 / -1}
+
+/* Result hero */
+.result-hero{display:none;margin-top:20px;border:1px solid var(--accent-deep);border-radius:14px;
+  background:linear-gradient(135deg, rgba(196,30,58,.14), rgba(196,30,58,.04));padding:24px 28px;
+  animation:riseIn .6s both}
+.result-hero.show{display:flex;align-items:center;gap:28px;flex-wrap:wrap}
+.result-hero .big{font:900 74px/1 var(--f-serif);color:var(--ink)}
+.result-hero .big em{font:16px var(--f-mono);font-style:normal;color:var(--ink-3)}
+.result-hero .meta{flex:1;min-width:220px}
+.result-hero .one{font:italic 600 18px/1.6 var(--f-serif);color:var(--ink)}
+.result-hero .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.result-hero .chips span{font:11px var(--f-mono);border:1px solid var(--line);border-radius:99px;
+  padding:3px 12px;color:var(--ink-2)}
+.result-hero .chips span b{color:var(--accent)}
+
+/* Card stage */
+.card-stage{display:none;margin-top:22px}
+.card-stage.show{display:block;animation:riseIn .6s both}
+.card-stage .frame{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--night, #12100c)}
+.card-stage iframe{width:100%;height:80vh;border:none;display:block;background:#12100c}
+.card-stage .actions{display:flex;gap:14px;justify-content:center;margin-top:14px;font:11px var(--f-mono)}
+.card-stage .actions a{color:var(--ink-2);letter-spacing:1px;text-decoration:none;border:1px solid var(--line);
+  border-radius:99px;padding:8px 18px;transition:all .2s}
+.card-stage .actions a:hover{color:var(--ink);border-color:var(--accent)}
+
+/* Toasts */
+.toasts{position:fixed;top:20px;right:20px;z-index:99;display:flex;flex-direction:column;gap:8px}
+.toast{background:var(--panel-2);border:1px solid var(--line);border-left:3px solid var(--accent);
+  border-radius:10px;padding:12px 18px;font:12px var(--f-sans);color:var(--ink);max-width:320px;
+  box-shadow:0 12px 32px rgba(0,0,0,.5);animation:toastIn .35s cubic-bezier(.22,1,.36,1) both}
+.toast.ok{border-left-color:#4caf7d}
+.toast.err{border-left-color:var(--accent)}
+@keyframes toastIn{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+.toast.out{animation:toastOut .3s ease both}
+@keyframes toastOut{to{opacity:0;transform:translateX(24px)}}
+
+@media (max-width:900px){
+  .layout{grid-template-columns:1fr;gap:20px;padding:24px 16px 60px}
+  .rail{position:static;flex-direction:row;overflow-x:auto;gap:8px;padding-bottom:6px}
+  .rail-item{border-left:none;border-bottom:2px solid var(--line);white-space:nowrap;padding:8px 10px}
+  .rail-item.active{border-bottom-color:var(--accent)}
+  .notes-grid{grid-template-columns:1fr}
+  .masthead{padding:24px 16px 18px}
+}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="brand">
+    <h1>M44 <em>/</em> 声音解剖工作台</h1>
+    <div class="sub">SOUND ANATOMY WORKBENCH · v5.2</div>
+  </div>
+  <div style="display:flex;align-items:center;gap:16px">
+    <div class="mode-toggle" style="display:flex;align-items:center;gap:8px;font:10px var(--f-mono);letter-spacing:1.5px;color:var(--ink-2)">
+      <span id="mode-label-single" style="color:var(--accent)">单曲</span>
+      <label style="position:relative;display:inline-block;width:36px;height:20px;cursor:pointer">
+        <input type="checkbox" id="album-mode-switch" onchange="toggleAlbumMode()" style="opacity:0;width:0;height:0">
+        <span style="position:absolute;cursor:pointer;inset:0;background:var(--line);border-radius:20px;transition:.3s" id="mode-slider"></span>
+        <span style="position:absolute;height:14px;width:14px;left:3px;bottom:3px;background:var(--ink-2);border-radius:50%;transition:.3s" id="mode-knob"></span>
+      </label>
+      <span id="mode-label-album" style="color:var(--ink-3)">专辑</span>
+    </div>
+    <div class="status-pill" id="server-pill" style="cursor:pointer" onclick="toggleSettings()" title="点击配置 AI 模型"><span class="dot"></span><span id="server-text">连接服务器中…</span></div>
+  </div>
+</header>
+
+<div class="layout">
+  <nav class="rail" id="rail">
+    <a class="rail-item active" href="#step1" data-step="1"><span class="no">01</span><span><span class="nm">音频分析</span><div class="st" id="st-1">待开始</div></span></a>
+    <a class="rail-item" href="#step2" data-step="2"><span class="no">02</span><span><span class="nm">数据研究</span><div class="st" id="st-2">待开始</div></span></a>
+    <a class="rail-item" href="#step3" data-step="3"><span class="no">03</span><span><span class="nm">听感记录</span><div class="st" id="st-3">待开始</div></span></a>
+    <a class="rail-item" href="#step4" data-step="4"><span class="no">04</span><span><span class="nm">生成评分卡</span><div class="st" id="st-4">待开始</div></span></a>
+  </nav>
+
+  <main>
+    <!-- Step 1 -->
+    <section class="panel" id="step1">
+      <div class="panel-head"><span class="no">STEP 01</span><h2>音频客观分析</h2><span class="hint">librosa · BPM / 调性 / 响度</span></div>
+      <div class="panel-body">
+        <div class="field">
+          <label>选择音频文件</label>
+          <select id="audio-select" onchange="onAudioSelect()" style="font:13px var(--f-mono);border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:10px 14px;width:100%;border-radius:8px">
+            <option value="">— 加载中… —</option>
+          </select>
+        </div>
+        <div class="field" style="margin-top:8px">
+          <label>或手动输入路径</label>
+          <input type="text" id="audio-path" placeholder="audio/filename.mp3">
+        </div>
+        <div class="btn-row">
+          <button class="btn" id="btn-analyze" onclick="runAnalysis()">分析音频</button>
+          <span class="inline-status" id="analyze-status"></span>
+        </div>
+        <div class="stat-grid" id="audio-stats" style="display:none"></div>
+        <div class="guide" id="guide-box" style="display:none"></div>
+        <div class="verify-panel" id="verify-panel" style="display:none">
+          <div class="verify-head">🔬 交叉检验 — 音频分析校准</div>
+          <div class="tip" style="margin-bottom:10px">librosa/essentia 自动检测值如下。调性检测对电子/流行不可靠，建议手动搜索歌曲实际参数后修正。修正值将用于评分。</div>
+          <div class="row">
+            <div class="field">
+              <label>BPM <span class="detected" id="v-detected-bpm"></span></label>
+              <input type="text" id="v-bpm" placeholder="自动检测值" oninput="saveDraft()">
+            </div>
+            <div class="field">
+              <label>调性 Key <span class="detected" id="v-detected-key"></span><span id="v-key-2nd" style="font:9px var(--f-mono);color:var(--ink-3);margin-left:8px"></span></label>
+              <input type="text" id="v-key" placeholder="自动检测值" oninput="saveDraft()">
+            </div>
+            <div class="field">
+              <label>时长 <span class="detected" id="v-detected-dur"></span></label>
+              <input type="text" id="v-duration" placeholder="自动检测值" oninput="saveDraft()">
+            </div>
+          </div>
+        </div>
+        <!-- 专辑模式: 曲目管理 -->
+        <div id="album-track-section" style="display:none;margin-top:16px;border:1px solid var(--gold);border-radius:10px;padding:16px 18px;background:var(--bg)">
+          <div style="font:700 14px var(--f-sans);color:var(--gold);margin-bottom:4px;letter-spacing:1px">📀 专辑模式 · 曲目管理</div>
+          <div class="tip" style="font:11px var(--f-mono);color:var(--ink-3);margin:10px 0;letter-spacing:1px">选择已解析的单曲组装专辑卡。无需重新Step1分析。</div>
+          <div class="btn-row">
+            <button class="btn ghost" onclick="loadLibraryTracks()">加载素材库曲目</button>
+            <span class="inline-status" id="album-track-status"></span>
+          </div>
+          <div id="album-track-list" style="margin-top:12px;max-height:300px;overflow-y:auto;border:1px solid var(--line);border-radius:8px"></div>
+          <div class="btn-row" style="margin-top:10px">
+            <input type="text" id="album-name-input" placeholder="专辑名称" style="flex:1;min-width:160px;font-size:11px" oninput="saveDraft()">
+            <button class="btn ghost" onclick="createAlbumFromSelected()">组装专辑卡</button>
+          </div>
+          <div id="album-hit-section" style="margin-top:12px;display:none">
+            <label style="font:10px var(--f-mono);color:var(--ink-3);letter-spacing:1.5px">热门单曲 (hit tracks) — 显示在卡片首页标签位</label>
+            <input type="text" id="album-hit-input" placeholder="用逗号分隔热门单曲名，如: Track A, Track B, Track C" style="margin-top:4px" oninput="saveDraft()">
+          </div>
+        </div>
+        <details class="manual" id="lyrics-section" style="margin-top:16px">
+          <summary>📝 歌词（辅助词维度分析）</summary>
+          <div class="inner">
+            <div class="tip">自动提取或手动粘贴原歌词。保持原文——英文不翻译、中文不修改。AI 会基于原文分析词作质量。</div>
+            <div class="btn-row">
+              <button class="btn ghost" id="btn-fetch-lyrics" onclick="fetchLyrics()">自动提取歌词</button>
+              <span class="inline-status" id="lyrics-status"></span>
+            </div>
+            <textarea id="lyrics-text" rows="6" placeholder="粘贴歌词原文，或点击"自动提取歌词"从网易云获取" oninput="saveDraft();onLyricsInput()" style="margin-top:10px"></textarea>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <!-- Step 2 -->
+    <section class="panel" id="step2">
+      <div class="panel-head"><span class="no">STEP 02</span><h2>数据研究 · 校准锚点</h2><span class="hint">Wikipedia / MusicBrainz / 网易云 / QQ</span></div>
+      <div class="panel-body">
+        <div class="field">
+          <label>搜索 — 专辑名 + 艺术家</label>
+          <input type="text" id="research-query" placeholder="Midnight Boom The Kills">
+        </div>
+        <div class="btn-row">
+          <button class="btn ghost" id="btn-research" onclick="runResearch()">搜索评分</button>
+          <span class="inline-status" id="research-status"></span>
+        </div>
+        <div class="badges" id="rating-strip" style="display:none"></div>
+        <div class="cover-preview" id="cover-preview" style="display:none">
+          <img id="cover-img" alt="封面">
+          <div class="info" id="cover-info"></div>
+        </div>
+        <div class="cover-manual" id="cover-manual" style="display:none">
+          <input type="text" id="cover-url" placeholder="粘贴封面 URL，或点击右侧按钮上传本地图片" oninput="onCoverManualInput()">
+          <input type="file" id="cover-file" accept="image/*" onchange="onCoverFilePicked()" style="display:none">
+          <button class="btn-xs" id="btn-cover-upload" onclick="document.getElementById('cover-file').click()">📁 上传</button>
+          <button class="btn-xs" id="btn-cover-apply" onclick="applyManualCover()">应用</button>
+          <button class="btn-xs" id="btn-cover-reset" onclick="resetManualCover()" style="display:none">重置为自动</button>
+        </div>
+        <details class="manual">
+          <summary>手动平台数据（RYM / AOTY / Discogs / QQ）</summary>
+          <div class="inner">
+            <div class="tip">RYM 被 Cloudflare 拦截无法自动抓取，请打开 rateyourmusic.com 对照填写；留空则跳过。</div>
+            <div class="row">
+              <div class="field"><label>RYM 评分 /5</label><input type="text" id="plat-rym" placeholder="3.88"></div>
+              <div class="field"><label>评分人数</label><input type="text" id="plat-rym-count" placeholder="1500"></div>
+              <div class="field"><label>RYM 流派</label><input type="text" id="plat-rym-genres" placeholder="Indie Rock, Garage Rock"></div>
+            </div>
+            <div class="row">
+              <div class="field"><label>AOTY 用户 /100</label><input type="text" id="plat-aoty" placeholder="85"></div>
+              <div class="field"><label>AOTY 乐评 /100</label><input type="text" id="plat-aoty-critic" placeholder="76"></div>
+              <div class="field"><label>Discogs 评分 /5</label><input type="text" id="plat-discogs" placeholder="4.2"></div>
+            </div>
+            <div class="row">
+              <div class="field"><label>QQ音乐 评分 /10</label><input type="text" id="plat-qq" placeholder="8.5"></div>
+              <div class="field"><label>QQ音乐 评论数</label><input type="text" id="plat-qq-comments" placeholder="133"></div>
+            </div>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <!-- Step 3 -->
+    <section class="panel" id="step3">
+      <div class="panel-head"><span class="no">STEP 03</span><h2>你的主观听感</h2><span class="hint">越详细，评分越准</span></div>
+      <div class="panel-body">
+        <p style="font:12px/1.7 var(--f-sans);color:var(--ink-3);margin-bottom:16px">先看 Step 1 的听歌指引，然后边听边写。不必每项都填。</p>
+        <div class="notes-grid">
+          <div class="field full">
+            <label>编曲 — 稀疏 / 适中 / 密集？印象深刻的器乐编排细节？</label>
+            <textarea id="note-arrangement" rows="2" placeholder="例如：失真吉他在副歌突然收窄，让贝斯跳出来——这个切换很聪明..."></textarea>
+          </div>
+          <div class="field">
+            <label>人声 / 演奏 — 是否打动你？哪句想倒回去重听？</label>
+            <textarea id="note-performance" rows="2" placeholder="例如：第二段主歌的尾音处理得特别克制，有种危险的性感..."></textarea>
+          </div>
+          <div class="field">
+            <label>制作 — 干净通透 / 温暖模拟 / 粗糙毛边 / 空间感 / 压缩过重？</label>
+            <textarea id="note-production" rows="2" placeholder="例如：混音保留了车库该有的颗粒感，但低频控制得很好..."></textarea>
+          </div>
+          <div class="field">
+            <label>记忆点 — 最好的部分？最差的部分？</label>
+            <textarea id="note-highlight" rows="2" placeholder="例如：最好的部分是bridge段的节奏变化；主歌略显拖沓..."></textarea>
+          </div>
+          <div class="field">
+            <label>类似作品 — 让你想起哪些艺术家或专辑？</label>
+            <textarea id="note-similar" rows="2" placeholder="例如：有早期 Yeah Yeah Yeahs 的影子，但制作更干净..."></textarea>
+          </div>
+          <div class="field full">
+            <label>歌词感受（纯器乐可跳过）</label>
+            <textarea id="note-lyrics" rows="2" placeholder="例如：歌词有叙事感，副歌那句很抓人..."></textarea>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 4 -->
+    <section class="panel" id="step4">
+      <div class="panel-head"><span class="no">STEP 04</span><h2>生成五维评分卡</h2><span class="hint">词 · 曲 · 编 · 唱 · 混</span></div>
+      <div class="panel-body">
+        <div class="row">
+          <div class="field"><label>艺术家</label><input type="text" id="meta-artist" placeholder="The Kills"></div>
+          <div class="field"><label>专辑 / 歌曲</label><input type="text" id="meta-title" placeholder="Midnight Boom"></div>
+          <div class="field"><label>年份</label><input type="text" id="meta-year" placeholder="2008"></div>
+        </div>
+        <div class="row">
+          <div class="field"><label>厂牌</label><input type="text" id="meta-label" placeholder="Domino"></div>
+          <div class="field"><label>流派</label><input type="text" id="meta-genre" placeholder="Garage Rock"></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn" id="btn-score" onclick="runScoring()">生成评分 &amp; 卡片</button>
+          <span class="inline-status" id="score-status"></span>
+        </div>
+
+        <div class="result-hero" id="result-hero">
+          <div class="big"><span id="hero-total">0</span><em id="hero-of">/100</em></div>
+          <div class="meta">
+            <div class="one" id="hero-one"></div>
+            <div class="chips" id="hero-chips"></div>
+          </div>
+        </div>
+
+        <div class="card-stage" id="card-stage">
+          <div class="frame"><iframe id="card-frame" title="评分卡预览"></iframe></div>
+          <div class="actions">
+            <a id="card-open" href="#" target="_blank">新窗口打开</a>
+            <a id="card-download" href="#" download="scorecard.html">下载卡片 HTML</a>
+            <a href="#" onclick="document.getElementById('card-frame').contentWindow.exportAll();return false;">导出全部 PNG</a>
+            <a href="#" onclick="document.getElementById('card-frame').contentWindow.exportRadar();return false;">导出雷达图·抖音</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="toasts" id="toasts"></div>
+<div class="draft-indicator" id="draft-indicator">草稿已保存</div>
+
+<!-- 模型设置面板 -->
+<div id="settings-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;justify-content:center;align-items:center" onclick="if(event.target===this)toggleSettings()">
+  <div style="background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px 28px;max-width:480px;width:90%;animation:riseIn .3s" onclick="event.stopPropagation()">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <h3 style="font:700 15px var(--f-serif);letter-spacing:1px;color:var(--ink)">⚙️ AI 模型设置</h3>
+      <button onclick="toggleSettings()" style="background:none;border:none;color:var(--ink-3);cursor:pointer;font:16px var(--f-mono)">✕</button>
+    </div>
+    <div class="field">
+      <label>模型名称</label>
+      <input type="text" id="set-model" placeholder="deepseek-v4-flash">
+    </div>
+    <div class="field">
+      <label>API 地址</label>
+      <input type="text" id="set-url" placeholder="https://api.deepseek.com/v1/chat/completions">
+    </div>
+    <div class="field">
+      <label>API Key</label>
+      <input type="text" id="set-key" placeholder="sk-...">
+    </div>
+    <div class="btn-row" style="justify-content:flex-end;margin-top:6px">
+      <button class="btn ghost" onclick="toggleSettings()">取消</button>
+      <button class="btn" id="btn-save-settings" onclick="saveSettings()">保存</button>
+    </div>
+    <div style="margin-top:12px;font:10px var(--f-mono);color:var(--ink-3);text-align:center">保存在 data/settings.json · 重启服务后生效</div>
+  </div>
+</div>
+
+<script>
+// ============ State ============
+let audioFeatures = null;
+let platformRatings = null;
+let researchData = null;
+window._heatData = {};
+window._manualCoverUrl = null;
+window._originalCoverUrl = null;
+const API = (location.port === "3001" || location.protocol === "file:") && location.port === "3001" ? "" : "http://localhost:3001";
+const DRAFT_KEY = "m44-draft-v5";
+
+// ============ 草稿自动保存 / 恢复 ============
+const DRAFT_FIELDS = [
+  "audio-path", "research-query",
+  "plat-rym", "plat-rym-count", "plat-rym-genres",
+  "plat-aoty", "plat-aoty-critic", "plat-discogs",
+  "plat-qq", "plat-qq-comments",
+  "note-arrangement", "note-performance", "note-production",
+  "note-highlight", "note-similar", "note-lyrics",
+  "meta-artist", "meta-title", "meta-year", "meta-label", "meta-genre",
+  "cover-url", "lyrics-text", "v-bpm", "v-key", "v-duration",
+];
+
+let _saveTimer = null;
+let _draftFlashTimer = null;
+function flashDraftIndicator() {
+  const el = $("draft-indicator");
+  el.classList.add("show");
+  clearTimeout(_draftFlashTimer);
+  _draftFlashTimer = setTimeout(() => el.classList.remove("show"), 1200);
+}
+
+function saveDraft() {
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => {
+    const draft = {};
+    DRAFT_FIELDS.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) draft[id] = el.value;
+    });
+    draft._manualCoverUrl = window._manualCoverUrl || null;
+    draft._originalCoverUrl = window._originalCoverUrl || null;
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); }
+    catch(e) { /* quota exceeded, ignore */ }
+    flashDraftIndicator();
+  }, 400);
+}
+
+function restoreDraft() {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return false;
+    const draft = JSON.parse(raw);
+    let hasContent = false;
+    DRAFT_FIELDS.forEach(id => {
+      if (draft[id] !== undefined && draft[id] !== "") {
+        const el = document.getElementById(id);
+        if (el) { el.value = draft[id]; hasContent = true; }
+      }
+    });
+    if (draft._manualCoverUrl) {
+      window._manualCoverUrl = draft._manualCoverUrl;
+      applyManualCoverSilent(draft._manualCoverUrl);
+      hasContent = true;
+    }
+    if (draft._originalCoverUrl) {
+      window._originalCoverUrl = draft._originalCoverUrl;
+    }
+    if (hasContent) toast("已恢复上次编辑的草稿", "ok");
+    return hasContent;
+  } catch(e) { return false; }
+}
+
+// 为所有草稿字段绑定自动保存
+function bindDraftSavers() {
+  DRAFT_FIELDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("input", saveDraft);
+  });
+}
+
+function clearDraft() {
+  try { localStorage.removeItem(DRAFT_KEY); } catch(e) {}
+}
+
+// ============ UI helpers ============
+function $(id){ return document.getElementById(id); }
+function escapeHTML(s){
+  if (s === null || s === undefined) return "";
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function setStatus(id, html, cls){
+  const el = $(id);
+  el.innerHTML = html || "";
+  el.className = "inline-status" + (cls ? " " + cls : "");
+}
+function busy(id, text){ setStatus(id, `<span class="spinner"></span>${escapeHTML(text)}`); }
+function toast(msg, kind){
+  const box = $("toasts");
+  const t = document.createElement("div");
+  t.className = "toast" + (kind ? " " + kind : "");
+  t.textContent = msg;
+  box.appendChild(t);
+  setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 350); }, 4200);
+}
+function markStep(n, state, label){
+  const el = $("st-" + n);
+  const rail = document.querySelector(`.rail-item[data-step="${n}"]`);
+  if (!el || !rail) return;
+  el.textContent = label || (state === "done" ? "已完成" : state === "active" ? "进行中" : "待开始");
+  rail.classList.toggle("done", state === "done");
+  rail.classList.toggle("active", state === "active");
+}
+function countUp(el, target, dur){
+  const start = performance.now();
+  function tick(now){
+    const p = Math.min(1, (now - start) / dur);
+    el.textContent = Math.round(target * (1 - Math.pow(1 - p, 3)));
+    if (p < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+// rail active state on scroll
+const railLinks = Array.from(document.querySelectorAll(".rail-item"));
+const panels = Array.from(document.querySelectorAll(".panel"));
+const io = new IntersectionObserver(entries => {
+  entries.forEach(en => {
+    if (en.isIntersecting) {
+      const idx = panels.indexOf(en.target);
+      railLinks.forEach((r, i) => { if (!r.classList.contains("done")) r.classList.toggle("active", i === idx); });
+    }
+  });
+}, { rootMargin: "-30% 0px -55% 0px" });
+panels.forEach(p => io.observe(p));
+
+// ============ Step 1: 音频分析 ============
+async function runAnalysis() {
+  let path = $("audio-path").value.trim();
+  if ((path.startsWith('"') && path.endsWith('"')) || (path.startsWith("'") && path.endsWith("'"))) {
+    path = path.slice(1, -1).trim();
+    $("audio-path").value = path;
+  }
+  if (!path) return toast("请输入音频文件路径", "err");
+
+  const btn = $("btn-analyze");
+  btn.disabled = true;
+  busy("analyze-status", "分析中…");
+  markStep(1, "active", "分析中");
+
+  try {
+    const res = await fetch(`${API}/api/analyze`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({audioPath: path})
+    });
+    const data = await res.json();
+
+    if (!data.success) {
+      setStatus("analyze-status", "✕ " + data.error, "err");
+      toast("分析失败：" + data.error, "err");
+      markStep(1, "active", "失败");
+      btn.disabled = false;
+      return;
+    }
+
+    audioFeatures = data.audioFeatures;
+    const af = audioFeatures;
+    const dur = af.duration_seconds ? Math.floor(af.duration_seconds/60) + ":" + String(Math.round(af.duration_seconds%60)).padStart(2,"0") : "?";
+    const durSec = af.duration_seconds ? Math.round(af.duration_seconds) + "s" : "?";
+
+    // 交叉检验面板
+    $("verify-panel").style.display = "block";
+    const kc = af.key_confidence || 0;
+    const keyIsLowConf = kc < 40;
+    const key2nd = af.key_second_candidate ? af.key_second_candidate.key_full : null;
+
+    $("v-detected-bpm").textContent = (af.bpm ? af.bpm + " BPM (置信度 " + (af.bpm_confidence || "?") + "%)" + (af.bpm_octave_risk ? " ⚠️倍拍歧义" : "") : "");
+    $("v-detected-key").textContent = (af.key ? af.key + (kc > 0 ? " (置信度 " + kc + "%)" : "") + (keyIsLowConf ? " ⚠️低置信" : "") + (key2nd ? " | 次候选: " + key2nd : "") : "");
+    $("v-detected-dur").textContent = durSec !== "?" ? durSec : "";
+    if (!$("v-bpm").value) $("v-bpm").placeholder = af.bpm ? (af.bpm + (af.bpm_octave_risk ? " ⚠️" : "")) : "";
+    if (!$("v-key").value) $("v-key").placeholder = keyIsLowConf ? (af.key || "") + " ⚠️" : (af.key || "");
+    // 第二候选调性提示
+    if (key2nd) {
+      $("v-key-2nd").textContent = "次候选: " + key2nd;
+    }
+    if (!$("v-duration").value) $("v-duration").placeholder = durSec;
+    const keyDisplay = keyIsLowConf
+      ? (af.key || "?") + " <small style='color:var(--accent)'>⚠️低置信</small>"
+      : (af.key || "?");
+    const bpmDisplay = (af.bpm || "?") + (af.bpm_octave_risk ? " <small style='color:#c9a24d'>⚠️歧义</small>" : "");
+    const bandwidth = af.spectral?.bandwidth ?? af.spectral?.bandwidth_mean;
+    const dynamicRange = af.dynamics?.energy_range ?? (typeof af.dynamics?.lra === "number" ? af.dynamics.lra / 20 : null);
+    const stereoWidth = af.stereo_width ?? af.stereo?.stereo_width;
+    const chordSequence = af.chord_sequence || af.network_mir?.chord_sequence;
+    const stats = [
+      [bpmDisplay, "BPM"],
+      [keyDisplay, "调性 Key"],
+      [dur, "时长"],
+      [af.spectral && af.spectral.centroid_mean != null ? Math.round(af.spectral.centroid_mean) + "<small> Hz</small>" : "—", "频谱质心"],
+      [af.spectral && af.spectral.rolloff_mean != null ? Math.round(af.spectral.rolloff_mean) + "<small> Hz</small>" : "—", "高频衰减"],
+      [bandwidth != null ? Math.round(bandwidth) + "<small> Hz</small>" : "—", "频谱带宽"],
+      [af.dynamics && typeof af.dynamics.integrated_lufs === "number" ? af.dynamics.integrated_lufs.toFixed(1) + "<small> LUFS</small>" : "?", "整体响度"],
+      [dynamicRange != null ? (dynamicRange*1000).toFixed(0) + "<small> ‰</small>" : "—", "动态幅度"],
+      [stereoWidth != null ? stereoWidth + "<small>%</small>" : "—", "立体声宽度"],
+      [chordSequence || "—", "和弦进行"],
+      [af.engine || "?", "分析引擎"],
+    ];
+    const grid = $("audio-stats");
+    grid.style.display = "grid";
+    grid.innerHTML = stats.map(s => `<div class="stat"><div class="v">${s[0]}</div><div class="l">${s[1]}</div></div>`).join("");
+
+    const guide = $("guide-box");
+    guide.style.display = "block";
+    guide.innerHTML = renderGuide(data.listeningGuide || "");
+
+    if (!$("research-query").value.trim()) {
+      const fn = af.file || "";
+      const name = fn.replace(/\.[^.]+$/, "").replace(/[-_]/g, " ").replace(/YouTube/ig, "").trim();
+      if (name) $("research-query").value = name;
+    }
+
+    setStatus("analyze-status", "✓ 分析完成", "ok");
+    toast("音频分析完成", "ok");
+    markStep(1, "done");
+
+    // ── 自动 MIR 交叉验证 ──
+    const artist = $("meta-artist").value.trim();
+    const title = $("meta-title").value.trim();
+    const artistQuery = artist && title ? `${artist} - ${title}` : [artist, title].filter(Boolean).join(" ");
+    const searchQ = $("research-query").value.trim();
+    const mirQuery = searchQ || (af.filename || "").replace(/\.[^.]+$/, "").replace(/[-_]/g, " ");
+    if (mirQuery) {
+      busy("analyze-status", "MIR交叉验证中…");
+      try {
+        const mirRes = await fetch(`${API}/api/mir-cross-ref`, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({ query: mirQuery, localResult: af })
+        });
+        const mirData = await mirRes.json();
+        if (mirData.success && mirData.recommended) {
+          window._mirResult = mirData;
+          showMIRPanel(mirData);
+          setStatus("analyze-status", "✓ 分析 + MIR验证完成", "ok");
+          markStep(1, "done");
+        }
+      } catch (e) {
+        console.log("MIR cross-ref skipped:", e.message);
+        setStatus("analyze-status", "✓ 分析完成 (MIR跳过)", "ok");
+      }
+    }
+  } catch (e) {
+    setStatus("analyze-status", "✕ " + e.message, "err");
+    toast("分析请求失败：" + e.message, "err");
+    markStep(1, "active", "失败");
+  }
+  btn.disabled = false;
+}
+
+function showMIRPanel(mirData) {
+  const panel = $("verify-panel");
+  const ref = mirData.crossReference || {};
+  const rec = mirData.recommended || {};
+  const localDisagree = ref.local_disagreement || {};
+  const originalBpm = audioFeatures?.manual_correction?.original_bpm ?? ref.bpm_values?.local ?? audioFeatures?.bpm;
+  const originalKey = audioFeatures?.manual_correction?.original_key ?? ref.key_values?.local ?? audioFeatures?.key;
+
+  if (audioFeatures && rec) {
+    audioFeatures.network_mir = {
+      source_count: rec.source_count,
+      consensus_level: rec.consensus_level,
+      external_results: mirData.external_results || [],
+      chord_sequence: rec.chord_sequence,
+      chord_summary: rec.chord_summary,
+    };
+    if (rec.bpm) {
+      audioFeatures.bpm = rec.bpm;
+      audioFeatures.bpm_confidence = Math.round((rec.bpm_confidence || rec.key_confidence || 0.55) * 100);
+      audioFeatures.bpm_method = "network_mir_calibrated";
+    }
+    if (rec.key) {
+      audioFeatures.key = rec.key;
+      audioFeatures.key_confidence = Math.round((rec.key_confidence || 0.55) * 100);
+      audioFeatures.key_method = "network_mir_calibrated";
+    }
+    if (rec.meter) audioFeatures.meter = rec.meter;
+    if (rec.chord_sequence) audioFeatures.chord_sequence = rec.chord_sequence;
+
+    const statVals = document.querySelectorAll("#audio-stats .stat .v");
+    if (statVals[0] && rec.bpm) statVals[0].innerHTML = `${rec.bpm}<small> BPM</small>`;
+    if (statVals[1] && rec.key) statVals[1].innerHTML = rec.key;
+    if (statVals[9] && rec.chord_sequence) statVals[9].textContent = rec.chord_sequence;
+    if (statVals[10] && (rec.bpm || rec.key)) statVals[10].textContent = "network MIR + " + (audioFeatures.engine || "local");
+  }
+
+  // BPM 推荐覆盖
+  if (rec.bpm && rec.bpm !== originalBpm) {
+    $("v-detected-bpm").textContent += ` → 推荐 ${rec.bpm} BPM`;
+    if (localDisagree.bpm) $("v-detected-bpm").style.color = "var(--accent)";
+    if (!$("v-bpm").value) $("v-bpm").placeholder = `${rec.bpm}`;
+  }
+
+  // Key 推荐覆盖
+  if (rec.key && rec.key !== originalKey) {
+    $("v-detected-key").textContent += ` → 推荐 ${rec.key}`;
+    if (localDisagree.key) $("v-detected-key").style.color = "var(--accent)";
+    if (!$("v-key").value) $("v-key").placeholder = `${rec.key}`;
+  }
+
+  // 分歧提示
+  if (localDisagree.bpm || localDisagree.key) {
+    const warnEl = document.createElement("div");
+    warnEl.style.cssText = "margin-top:8px;padding:8px 12px;background:rgba(201,162,77,.08);border-left:2px solid var(--gold);border-radius:4px;font:11px var(--f-mono);color:var(--gold);letter-spacing:1px";
+    const parts = [];
+    if (localDisagree.bpm) parts.push(`BPM: 本地 ${originalBpm} → 网络推荐 ${ref.bpm_consensus || rec.bpm}`);
+    if (localDisagree.key) parts.push(`Key: 本地 ${originalKey} → 网络推荐 ${ref.key_consensus || rec.key}`);
+    warnEl.textContent = "⚠️ 本地算法与外部源分歧 " + parts.join(" | ");
+    panel.appendChild(warnEl);
+  }
+
+  // 共识状态
+  const consensusTag = document.createElement("span");
+  consensusTag.style.cssText = "display:inline-block;margin-left:8px;font:9px var(--f-mono);padding:2px 8px;border-radius:99px;letter-spacing:1px";
+  if (ref.consensus === "local_diverged") {
+    consensusTag.textContent = "外部多数覆盖";
+    consensusTag.style.background = "rgba(201,162,77,.15)";
+    consensusTag.style.color = "var(--gold)";
+  } else if (ref.consensus === "multi_source_agree") {
+    consensusTag.textContent = "多源一致";
+    consensusTag.style.background = "rgba(76,175,125,.15)";
+    consensusTag.style.color = "#4caf7d";
+  } else if (ref.consensus === "conflict") {
+    consensusTag.textContent = "多源冲突";
+    consensusTag.style.background = "rgba(224,64,90,.15)";
+    consensusTag.style.color = "var(--accent)";
+  }
+  const headEl = panel.querySelector(".verify-head");
+  if (headEl) headEl.appendChild(consensusTag);
+}
+
+function renderGuide(md) {
+  const esc = escapeHTML(md);
+  return esc
+    .replace(/^### (.*)$/gm, "<h3>$1</h3>")
+    .replace(/^## (.*)$/gm, "<h2>$1</h2>")
+    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+}
+
+// ============ 歌词 ============
+async function fetchLyrics() {
+  const q = $("research-query").value.trim() || $("meta-artist").value + " " + $("meta-title").value;
+  if (!q.trim()) return toast("请先在 Step 2 输入搜索词或 Step 4 填写艺术家/专辑", "err");
+  const btn = $("btn-fetch-lyrics");
+  btn.disabled = true;
+  busy("lyrics-status", "搜索歌词中…");
+  try {
+    const res = await fetch(`${API}/api/lyrics?q=${encodeURIComponent(q.trim())}`);
+    const data = await res.json();
+    if (data.success && data.lyrics) {
+      $("lyrics-text").value = data.lyrics;
+      saveDraft();
+      setStatus("lyrics-status", "✓ 已提取 " + data.lyrics.length + " 字 — 已就绪", "ok");
+      $("lyrics-section").querySelector("summary").innerHTML = "📝 歌词 ✅ (" + data.lyrics.length + "字)";
+      toast("歌词已自动提取", "ok");
+    } else {
+      setStatus("lyrics-status", "✕ " + (data.hint || "未找到歌词，请手动粘贴"), "err");
+    }
+  } catch (e) {
+    setStatus("lyrics-status", "✕ 请求失败", "err");
+  }
+  btn.disabled = false;
+}
+
+function onLyricsInput() {
+  const len = $("lyrics-text").value.trim().length;
+  const summary = $("lyrics-section").querySelector("summary");
+  if (len > 0) {
+    summary.innerHTML = "📝 歌词 ✅ (" + len + "字)";
+    setStatus("lyrics-status", "✓ 已手动输入 " + len + " 字", "ok");
+  } else {
+    summary.innerHTML = "📝 歌词（辅助词维度分析）";
+    setStatus("lyrics-status", "", "");
+  }
+}
+
+// ============ Step 2: 数据研究 ============
+function badge(label, score, max, accent){
+  return `<div class="badge${accent ? " accent" : ""}"><div class="s">${score}<em>/${max}</em></div><div class="k">${label}</div></div>`;
+}
+
+async function runResearch() {
+  const query = $("research-query").value.trim();
+  if (!query) return toast("请输入专辑名 + 艺术家", "err");
+
+  const btn = $("btn-research");
+  const strip = $("rating-strip");
+  btn.disabled = true;
+  busy("research-status", "搜索 Wikipedia + MusicBrainz…");
+  markStep(2, "active", "搜索中");
+  platformRatings = {};
+  window._heatData = {};
+
+  try {
+    const res = await fetch(`${API}/api/research?q=${encodeURIComponent(query)}`);
+    researchData = await res.json();
+    const agg = researchData.aggregate || {};
+
+    strip.style.display = "flex";
+    strip.innerHTML = "";
+
+    if (agg.reviewScores) {
+      const rs = agg.reviewScores;
+      if (rs.pitchfork) { strip.innerHTML += badge("Pitchfork", rs.pitchfork.score, rs.pitchfork.max, true); platformRatings.pitchfork = rs.pitchfork; }
+      if (rs.metacritic) { strip.innerHTML += badge("Metacritic", rs.metacritic.score, rs.metacritic.max, true); platformRatings.metacritic = rs.metacritic; }
+      if (rs.allmusic) strip.innerHTML += badge("AllMusic", rs.allmusic.score, rs.allmusic.max);
+      if (rs.nme) strip.innerHTML += badge("NME", rs.nme.score, rs.nme.max);
+    }
+    if (agg.tags && agg.tags.length)
+      strip.innerHTML += `<div class="badge"><div class="s" style="font-size:12px">${escapeHTML(agg.tags.slice(0,3).join(" / "))}</div><div class="k">流派</div></div>`;
+    if (agg.date)
+      strip.innerHTML += `<div class="badge"><div class="s">${escapeHTML(agg.date.slice(0,4))}</div><div class="k">年份</div></div>`;
+
+    // 封面预览
+    window._originalCoverUrl = agg.artwork || null;
+    window._manualCoverUrl = null;
+    updateCoverDisplay(agg.artwork, agg);
+
+    // 自动填充元数据
+    if (agg.artist && !$("meta-artist").value) $("meta-artist").value = agg.artist;
+    if (agg.title && !$("meta-title").value) $("meta-title").value = agg.title;
+    if (agg.date && !$("meta-year").value) $("meta-year").value = agg.date.slice(0,4);
+    if (agg.labels && agg.labels.length && !$("meta-label").value) $("meta-label").value = agg.labels[0];
+    if (agg.tags && agg.tags.length && !$("meta-genre").value) $("meta-genre").value = agg.tags.slice(0,4).join(", ");
+    saveDraft();
+
+    const n = Object.keys(platformRatings).length;
+    setStatus("research-status", n ? `✓ 提取到 ${n} 个平台评分` : "已获取元数据（未找到平台评分）", "ok");
+
+    // 中文平台
+    busy("research-status", "查询网易云 / QQ音乐…");
+    try {
+      const cnRes = await fetch(`${API}/api/research/chinese?q=${encodeURIComponent(query)}`);
+      const cn = await cnRes.json();
+      // 用网易云数据: 优先专辑数据（评论数来自专辑搜索），fallback 到单曲
+      const neData = (cn.netease && cn.netease.isAlbum) ? cn.netease : cn.neteaseAlbum;
+      if (neData || cn.netease) {
+        const neComments = (neData && neData.commentCount) || (cn.netease && cn.netease.commentCount) || 0;
+        strip.innerHTML += badge("网易云评论", neComments.toLocaleString(), "条");
+        if (neComments) window._heatData.netease_comments = neComments;
+        if (cn.netease && cn.netease.playCount) window._heatData.netease_playcount = cn.netease.playCount;
+      }
+      // 用网易云专辑封面补充或替换自动封面
+      if (!window._originalCoverUrl || !agg.artwork) {
+        const cnArtwork = (cn.neteaseAlbum && cn.neteaseAlbum.picUrl)
+          || (cn.netease && cn.netease.picUrl)
+          || null;
+        if (cnArtwork) {
+          window._originalCoverUrl = cnArtwork;
+          updateCoverDisplay(cnArtwork, agg);
+          console.log("🖼️ 封面来自网易云专辑搜索");
+        }
+      }
+    } catch (e) { console.log("Chinese platform fetch failed:", e.message); }
+
+    setStatus("research-status", "✓ 研究完成", "ok");
+    toast("数据研究完成", "ok");
+    markStep(2, "done");
+  } catch (e) {
+    setStatus("research-status", "✕ " + e.message, "err");
+    toast("研究请求失败：" + e.message, "err");
+    markStep(2, "active", "失败");
+  }
+  btn.disabled = false;
+}
+
+// ============ 封面管理 ============
+function updateCoverDisplay(artworkUrl, agg) {
+  if (artworkUrl) {
+    $("cover-preview").style.display = "flex";
+    $("cover-img").src = artworkUrl;
+    $("cover-info").innerHTML = `<b>${escapeHTML((agg && agg.title) || "")}</b><br>${escapeHTML((agg && agg.artist) || "")} · ${escapeHTML(((agg && agg.labels) || [])[0] || "")}<br>封面将用于卡片背景`;
+  } else {
+    $("cover-preview").style.display = "none";
+  }
+  $("cover-manual").style.display = "flex";
+  $("cover-url").value = window._manualCoverUrl ? (window._manualCoverUrl.startsWith("data:") ? "[本地图片]" : window._manualCoverUrl) : "";
+  updateCoverButtons();
+}
+
+function onCoverManualInput() {
+  const val = $("cover-url").value.trim();
+  $("btn-cover-apply").classList.toggle("used", !!val);
+}
+
+function onCoverFilePicked() {
+  const file = $("cover-file").files[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) { toast("图片不能超过 5MB", "err"); return; }
+  const reader = new FileReader();
+  reader.onerror = function() {
+    toast("读取图片失败，请重试", "err");
+  };
+  reader.onload = function() {
+    window._manualCoverUrl = reader.result;
+    $("cover-url").value = "[本地图片] " + file.name;
+    $("cover-img").src = reader.result;
+    $("cover-preview").style.display = "flex";
+    $("btn-cover-apply").classList.add("used");
+    updateCoverButtons();
+    saveDraft();
+    toast("已加载本地封面 (" + Math.round(file.size/1024) + "KB)", "ok");
+  };
+  reader.readAsDataURL(file);
+}
+
+function applyManualCover() {
+  const val = $("cover-url").value.trim();
+  if (!val) {
+    toast("请输入封面 URL", "err");
+    return;
+  }
+  window._manualCoverUrl = val;
+  $("cover-img").src = val;
+  $("cover-preview").style.display = "flex";
+  $("btn-cover-apply").classList.add("used");
+  updateCoverButtons();
+  saveDraft();
+  toast("已应用手动封面", "ok");
+}
+
+function applyManualCoverSilent(url) {
+  // 页面恢复时静默应用，不弹 toast
+  window._manualCoverUrl = url;
+  $("cover-url").value = url;
+  $("cover-img").src = url;
+  $("cover-preview").style.display = "flex";
+  $("btn-cover-apply").classList.add("used");
+  updateCoverButtons();
+}
+
+function resetManualCover() {
+  window._manualCoverUrl = null;
+  $("cover-url").value = "";
+  $("btn-cover-apply").classList.remove("used");
+  if (window._originalCoverUrl) {
+    $("cover-img").src = window._originalCoverUrl;
+    $("cover-preview").style.display = "flex";
+  } else {
+    $("cover-preview").style.display = "none";
+  }
+  updateCoverButtons();
+  saveDraft();
+  toast("已恢复自动封面", "ok");
+}
+
+function getActiveCoverUrl() {
+  return window._manualCoverUrl || window._originalCoverUrl || "";
+}
+
+function updateCoverButtons() {
+  $("btn-cover-reset").style.display = window._manualCoverUrl ? "" : "none";
+}
+
+// ============ Step 4: 评分 + 卡片 ============
+async function runScoring() {
+  if (!audioFeatures) return toast("请先完成 Step 1 音频分析", "err");
+
+  const btn = $("btn-score");
+  btn.disabled = true;
+  busy("score-status", "DeepSeek 评分中…");
+  markStep(4, "active", "评分中");
+  markStep(3, "done");
+
+  const notes = [];
+  ["note-arrangement", "note-performance", "note-production",
+   "note-highlight", "note-similar", "note-lyrics"].forEach(id => {
+    const v = $(id).value.trim();
+    if (v) notes.push(v);
+  });
+  const listeningNotes = notes.join("\n\n") || "";
+
+  const pr = platformRatings || {};
+  const rymVal = parseFloat($("plat-rym").value);
+  const rymCount = parseInt($("plat-rym-count").value) || null;
+  const rymGenres = $("plat-rym-genres").value.trim();
+  const aotyVal = parseFloat($("plat-aoty").value);
+  const aotyCritic = parseFloat($("plat-aoty-critic").value);
+  const discogsVal = parseFloat($("plat-discogs").value);
+  const qqVal = parseFloat($("plat-qq").value);
+  const qqComments = parseInt($("plat-qq-comments").value) || null;
+
+  if (rymVal) pr.rym = {score: rymVal, max: 5, rating_count: rymCount};
+  if (aotyVal) pr.aoty = {score: aotyVal, max: 100};
+  if (aotyCritic) pr.aoty_critic = {score: aotyCritic, max: 100};
+  if (discogsVal) pr.discogs = {score: discogsVal, max: 5};
+  if (qqVal) pr.qq = {score: qqVal, max: 10};
+
+  if (qqComments) window._heatData.qq_music_comments = qqComments;
+  if (rymCount) window._heatData.rym_rating_count = rymCount;
+  if (rymGenres) $("meta-genre").value = rymGenres; // RYM流派始终覆盖自动数据
+
+  const metadata = {
+    artist: $("meta-artist").value.trim(),
+    title: $("meta-title").value.trim(),
+    release_date: $("meta-year").value.trim(),
+    label: $("meta-label").value.trim(),
+    genres: $("meta-genre").value.trim().split(/[,，、]/).map(s => s.trim()).filter(Boolean),
+  };
+
+  // 用交叉检验面板的修正值覆盖自动检测值
+  const correctedAF = { ...audioFeatures };
+  const vBpm = $("v-bpm").value.trim();
+  const vKey = $("v-key").value.trim();
+  const vDur = $("v-duration").value.trim();
+  if (vBpm) correctedAF.bpm = parseFloat(vBpm) || correctedAF.bpm;
+  if (vKey) correctedAF.key = vKey;
+  if (vDur) {
+    const durMatch = vDur.match(/(\d+)\s*s/);
+    if (durMatch) correctedAF.duration_seconds = parseInt(durMatch[1]);
+    else correctedAF.duration_seconds = vDur;
+  }
+
+  try {
+    const scoreRes = await fetch(`${API}/api/analyze/score`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        audioFeatures: correctedAF,
+        listeningAnswers: listeningNotes,
+        albumMetadata: metadata,
+        lyrics: $("lyrics-text").value.trim() || undefined,
+        platformRatings: Object.keys(pr).length > 0 ? pr : undefined,
+        researchData,
+        heat: window._heatData,
+      })
+    });
+    const scoreData = await scoreRes.json();
+
+    if (!scoreData.success) {
+      setStatus("score-status", "✕ " + scoreData.error, "err");
+      toast("评分失败：" + scoreData.error, "err");
+      btn.disabled = false;
+      markStep(4, "active", "失败");
+      return;
+    }
+
+    // Result hero
+    const sc = scoreData.scores;
+    const hasLyrics = sc.词 !== null && sc.词 !== undefined;
+    $("hero-of").textContent = "/" + (hasLyrics ? 100 : 80);
+    $("hero-one").textContent = sc.oneLiner ? "「" + sc.oneLiner + "」" : "";
+    $("hero-chips").innerHTML = ["词","曲","编","唱","混"]
+      .filter(d => sc[d] && typeof sc[d].score === "number")
+      .map(d => `<span>${d} <b>${sc[d].score}</b></span>`).join("");
+    $("result-hero").classList.add("show");
+    countUp($("hero-total"), sc.totalScore || 0, 900);
+
+    // AI 自查: 核实事实错误后修正
+    busy("score-status", "AI 自查核实中…");
+    let finalScores = scoreData.scores;
+    try {
+      const vRes = await fetch(`${API}/api/verify-card`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          scores: scoreData.scores,
+          artist: metadata.artist, title: metadata.title,
+          year: metadata.release_date, genre: (metadata.genres || []).join(", "),
+          audioFeatures: correctedAF,
+          listeningAnswers: listeningNotes || undefined,
+          lyrics: $("lyrics-text").value.trim() || undefined,
+        })
+      });
+      const vData = await vRes.json();
+      if (vData.success && vData.verified) {
+        const v = vData.verified;
+        // verified.scores 是修正后的完整 scores 对象
+        if (v.scores) finalScores = v.scores;
+        else finalScores = v; // fallback
+        if (v.corrections?.length) {
+          console.log("🔍 AI 自查修正: " + v.corrections.join("; "));
+          toast("AI 已自查修正 " + v.corrections.length + " 处内容", "ok");
+        }
+      }
+    } catch (e) { console.log("自查跳过:", e.message); }
+
+    busy("score-status", "渲染卡片中…");
+
+    const cardRes = await fetch(`${API}/api/card/v4`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        artist: metadata.artist || "Unknown",
+        title: metadata.title || (audioFeatures && audioFeatures.file) || "Unknown",
+        year: metadata.release_date || "",
+        label: metadata.label || "",
+        genre: (metadata.genres || []).join(", "),
+        scores: finalScores,
+        totalScore: finalScores.totalScore,
+        oneLiner: finalScores.oneLiner || "",
+        tags: finalScores.tags || [],
+        coverUrl: getActiveCoverUrl(),
+        summary: (researchData && researchData.aggregate && researchData.aggregate.summary) || "",
+        heat: {
+          netease_comments: (window._heatData && window._heatData.netease_comments) || 0,
+          qq_music_comments: (window._heatData && window._heatData.qq_music_comments) || 0,
+          lastfm_listeners: (window._heatData && window._heatData.lastfm_listeners) || 0,
+        },
+        note: `M44 Sound Anatomy · ${new Date().toLocaleDateString('zh-CN').replace(/\//g,'-')}`,
+      })
+    });
+    const cardHTML = await cardRes.text();
+
+    const blob = new Blob([cardHTML], {type: "text/html;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+    $("card-frame").src = url;
+    $("card-open").href = url;
+    $("card-download").href = url;
+    $("card-stage").classList.add("show");
+
+    setStatus("score-status", `✓ 总分 ${sc.totalScore}${sc.oneLiner ? " · " + sc.oneLiner : ""}`, "ok");
+    toast("评分卡已生成", "ok");
+    markStep(4, "done");
+
+    // 自动存素材库 + 按专辑归类
+    const albumTitle = metadata.title || "";
+    autoSaveToLibrary(finalScores, metadata, correctedAF, albumTitle);
+
+    setTimeout(() => $("card-stage").scrollIntoView({behavior: "smooth", block: "start"}), 300);
+  } catch (e) {
+    setStatus("score-status", "✕ " + e.message, "err");
+    toast("请求失败：" + e.message, "err");
+    markStep(4, "active", "失败");
+  }
+  btn.disabled = false;
+}
+
+// 自动保存到素材库 (按专辑归类)
+async function autoSaveToLibrary(scores, metadata, audioFeatures, albumTitle) {
+  try {
+    const trackId = "track_" + Date.now();
+    await fetch(`${API}/api/library`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        type: "tracks",
+        data: {
+          id: trackId,
+          title: metadata.title || audioFeatures?.filename || "Unknown",
+          artist: metadata.artist || "",
+          albumTitle: albumTitle || metadata.title || "",
+          year: metadata.release_date || "",
+          label: metadata.label || "",
+          genre: (metadata.genres || []).join(", "),
+          scores: scores,
+          audioFeatures: audioFeatures,
+          coverUrl: getActiveCoverUrl() || "",
+          heat: window._heatData || {},
+        }
+      })
+    });
+    console.log("📁 已自动存入素材库 → 专辑: " + (albumTitle || metadata.title || "?"));
+  } catch (e) {
+    console.log("素材库自动保存失败:", e.message);
+  }
+}
+
+// Audio dropdown
+async function loadAudioList() {
+  const sel = $("audio-select");
+  try {
+    const res = await fetch(`${API}/api/audio-list`);
+    const data = await res.json();
+    sel.innerHTML = "";
+    if (data.success && data.files.length) {
+      data.files.forEach(f => {
+        const opt = document.createElement("option");
+        opt.value = "audio/" + f;
+        opt.textContent = f;
+        sel.appendChild(opt);
+      });
+    } else {
+      sel.innerHTML = '<option value="">— 无音频文件 —</option>';
+    }
+  } catch (e) {
+    sel.innerHTML = '<option value="">— 加载失败 —</option>';
+  }
+}
+function onAudioSelect() {
+  const v = $("audio-select").value;
+  if (v) $("audio-path").value = v;
+}
+
+// ============ Album Mode ============
+let isAlbumMode = false;
+let selectedAlbumTracks = [];
+let libraryTracks = [];
+
+function toggleAlbumMode() {
+  isAlbumMode = $("album-mode-switch").checked;
+  const slider = $("mode-slider");
+  const knob = $("mode-knob");
+  const labelSingle = $("mode-label-single");
+  const labelAlbum = $("mode-label-album");
+
+  if (isAlbumMode) {
+    slider.style.background = "var(--accent-deep)";
+    knob.style.left = "19px";
+    knob.style.background = "#fff";
+    labelSingle.style.color = "var(--ink-3)";
+    labelAlbum.style.color = "var(--accent)";
+    // 隐藏音频分析，显示专辑曲目管理
+    $("audio-select").closest(".field").style.display = "none";
+    document.querySelector("#step1 .field:nth-child(2)").style.display = "none";
+    $("btn-analyze").closest(".btn-row").style.display = "none";
+    $("audio-stats").style.display = "none";
+    $("guide-box").style.display = "none";
+    $("verify-panel").style.display = "none";
+    $("album-track-section").style.display = "block";
+    // 更新 rail
+    $("rail").querySelector('[data-step="1"] .nm').textContent = "曲目管理";
+    markStep(1, "active", "选曲中");
+    // 预加载素材库
+    loadLibraryTracks();
+  } else {
+    slider.style.background = "var(--line)";
+    knob.style.left = "3px";
+    knob.style.background = "var(--ink-2)";
+    labelSingle.style.color = "var(--accent)";
+    labelAlbum.style.color = "var(--ink-3)";
+    // 恢复音频分析
+    $("audio-select").closest(".field").style.display = "";
+    document.querySelector("#step1 .field:nth-child(2)").style.display = "";
+    $("btn-analyze").closest(".btn-row").style.display = "";
+    $("album-track-section").style.display = "none";
+    $("rail").querySelector('[data-step="1"] .nm').textContent = "音频分析";
+  }
+  saveDraft();
+}
+
+async function loadLibraryTracks() {
+  busy("album-track-status", "加载素材库…");
+  try {
+    // 并行加载: 素材库数据 + 专辑目录结构
+    const [libRes, dirRes] = await Promise.all([
+      fetch(`${API}/api/library`),
+      fetch(`${API}/api/library/album-dirs`),
+    ]);
+    const lib = await libRes.json();
+    const dirData = await dirRes.json();
+    const albumDirs = dirData.success ? dirData.dirs : [];
+
+    libraryTracks = (lib.tracks || []).sort((a, b) => {
+      return (b.updatedAt || b.createdAt || "").localeCompare(a.updatedAt || a.createdAt || "");
+    });
+
+    const list = $("album-track-list");
+    if (!libraryTracks.length) {
+      list.innerHTML = '<div style="padding:14px;color:var(--ink-3);font:12px var(--f-sans);text-align:center">素材库中没有已解析的曲目。<br>请在单曲模式下完成 Step1~4，卡片会自动按专辑归入素材库和 output 目录。</div>';
+      setStatus("album-track-status", "素材库为空 — 先在单曲模式解析", "ok");
+      return;
+    }
+
+    // 按专辑分组 (优先显示已有 output 目录的专辑)
+    const grouped = {};
+    const dirMap = {};
+    for (const d of albumDirs) dirMap[d.name] = d;
+
+    for (const t of libraryTracks) {
+      const albumTitle = t.albumTitle;
+      // 匹配 output 目录
+      let key = albumTitle;
+      let dirInfo = null;
+      if (albumTitle && dirMap[albumTitle]) {
+        dirInfo = dirMap[albumTitle];
+      } else if (albumTitle) {
+        // 标准化匹配
+        const norm = s => (s||"").toLowerCase().replace(/[^\w一-鿿]/g, "");
+        const match = albumDirs.find(d => norm(d.name) === norm(albumTitle));
+        if (match) { key = match.name; dirInfo = match; }
+      }
+
+      const groupKey = key || "__ungrouped__";
+      if (!grouped[groupKey]) {
+        grouped[groupKey] = {
+          name: key || "未归类",
+          dirInfo: dirInfo,
+          tracks: []
+        };
+      }
+      if (dirInfo && !grouped[groupKey].dirInfo) grouped[groupKey].dirInfo = dirInfo;
+      grouped[groupKey].tracks.push(t);
+    }
+
+    // 排序: 有 output 目录的专辑优先
+    const sortedGroups = Object.entries(grouped).sort((a, b) => {
+      if (a[0] === "__ungrouped__") return 1;
+      if (b[0] === "__ungrouped__") return -1;
+      return b[1].tracks.length - a[1].tracks.length;
+    });
+
+    let html = "";
+    for (const [gid, group] of sortedGroups) {
+      const dirTag = group.dirInfo
+        ? `<span style="font:9px var(--f-mono);color:#4caf7d;margin-left:8px">📁 ${group.dirInfo.path} (${group.dirInfo.fileCount}卡)</span>`
+        : "";
+      html += `<div style="padding:8px 14px;background:var(--bg-2);font:10px var(--f-mono);letter-spacing:2px;color:var(--gold);border-bottom:1px solid var(--line);display:flex;align-items:center">${escapeHTML(group.name)} <span style="margin-left:auto;font-size:9px;color:var(--ink-3)">${group.tracks.length}轨</span>${dirTag}</div>`;
+      for (const t of group.tracks) {
+        const selected = selectedAlbumTracks.some(s => s.id === t.id);
+        const hasAnalysis = t.audioFeatures && t.audioFeatures.bpm;
+        const hasScores = t.scores && t.scores.totalScore;
+        const info = [];
+        if (t.audioFeatures) {
+          const af = t.audioFeatures;
+          if (af.bpm) info.push(af.bpm + " BPM");
+          if (af.key) info.push(af.key);
+          if (af.duration_seconds) {
+            const m = Math.floor(af.duration_seconds / 60);
+            const s = Math.round(af.duration_seconds % 60);
+            info.push(m + ":" + String(s).padStart(2, "0"));
+          }
+        }
+        if (hasScores) info.push("★" + t.scores.totalScore);
+        html += `<div style="padding:8px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line-soft);cursor:pointer;${selected ? 'background:rgba(196,30,58,.1)' : ''}"
+          onclick="toggleTrackSelect('${t.id}')" data-track-id="${t.id}">
+          <input type="checkbox" ${selected ? "checked" : ""} onclick="event.stopPropagation();toggleTrackSelect('${t.id}')" style="accent-color:var(--accent)">
+          <span style="flex:1;font:12px var(--f-sans);color:var(--ink)">${escapeHTML(t.title || t.audioFeatures?.filename || t.id)}</span>
+          <span style="font:10px var(--f-mono);color:${hasAnalysis ? '#4caf7d' : 'var(--ink-3)'}">${hasAnalysis ? "✓" : "×"}</span>
+          <span style="font:10px var(--f-mono);color:var(--ink-3)">${info.join(" · ")}</span>
+        </div>`;
+      }
+    }
+    list.innerHTML = html;
+    setStatus("album-track-status", `${libraryTracks.length}轨 · ${sortedGroups.length}专辑 · 已选${selectedAlbumTracks.length}`, "ok");
+  } catch (e) {
+    setStatus("album-track-status", "✕ 加载失败: " + e.message, "err");
+  }
+}
+
+function toggleTrackSelect(trackId) {
+  const idx = selectedAlbumTracks.findIndex(t => t.id === trackId);
+  if (idx >= 0) {
+    selectedAlbumTracks.splice(idx, 1);
+  } else {
+    const track = libraryTracks.find(t => t.id === trackId);
+    if (track) selectedAlbumTracks.push(track);
+  }
+  // 更新 checkbox
+  const row = document.querySelector(`[data-track-id="${trackId}"]`);
+  if (row) {
+    const cb = row.querySelector("input[type='checkbox']");
+    cb.checked = selectedAlbumTracks.some(t => t.id === trackId);
+    row.style.background = cb.checked ? "rgba(196,30,58,.1)" : "";
+  }
+  setStatus("album-track-status", `已选 ${selectedAlbumTracks.length} / ${libraryTracks.length} 轨`, "ok");
+  if (selectedAlbumTracks.length > 0) {
+    $("album-hit-section").style.display = "block";
+    $("album-name-input").placeholder = "专辑名称 (例如: " + (selectedAlbumTracks[0].albumTitle || selectedAlbumTracks[0].title || "") + ")";
+  }
+  autoFillAlbumMeta();
+}
+
+function autoFillAlbumMeta() {
+  if (selectedAlbumTracks.length === 0) return;
+  // 自动填充专辑元数据
+  const first = selectedAlbumTracks[0];
+  if (first.artist && !$("meta-artist").value) $("meta-artist").value = first.artist;
+  if (first.albumTitle && !$("album-name-input").value) $("album-name-input").value = first.albumTitle;
+  if (first.year && !$("meta-year").value) $("meta-year").value = first.year;
+  if (first.label && !$("meta-label").value) $("meta-label").value = first.label;
+  if (first.genre && !$("meta-genre").value) $("meta-genre").value = first.genre;
+  saveDraft();
+}
+
+async function createAlbumFromSelected() {
+  if (selectedAlbumTracks.length === 0) return toast("请至少选择一首曲目", "err");
+
+  const albumTitle = $("album-name-input").value.trim() || "未命名专辑";
+  const hitInput = $("album-hit-input").value.trim();
+  const hitTracks = hitInput ? hitInput.split(/[,，、]/).map(s => s.trim()).filter(Boolean) : [];
+
+  const albumMeta = {
+    artist: $("meta-artist").value.trim(),
+    title: albumTitle,
+    year: $("meta-year").value.trim(),
+    label: $("meta-label").value.trim(),
+    genre: $("meta-genre").value.trim(),
+  };
+
+  // 收集听感笔记
+  const notes = [];
+  ["note-arrangement", "note-performance", "note-production",
+   "note-highlight", "note-similar", "note-lyrics"].forEach(id => {
+    const v = $(id).value.trim();
+    if (v) notes.push(v);
+  });
+
+  busy("score-status", "生成专辑卡片中…");
+  markStep(4, "active", "专辑卡生成中");
+
+  try {
+    const cardRes = await fetch(`${API}/api/album/card`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        albumMeta,
+        tracks: selectedAlbumTracks,
+        hitTracks,
+        coverUrl: getActiveCoverUrl(),
+      })
+    });
+    const cardHTML = await cardRes.text();
+
+    if (cardHTML.includes("error")) {
+      setStatus("score-status", "✕ 卡片生成失败", "err");
+      toast("专辑卡片生成失败", "err");
+      return;
+    }
+
+    const blob = new Blob([cardHTML], {type: "text/html;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+    $("card-frame").src = url;
+    $("card-open").href = url;
+    $("card-download").href = url;
+    $("card-stage").classList.add("show");
+
+    // 显示聚合结果
+    const agg = buildAlbumCardDataVisual(selectedAlbumTracks);
+    $("hero-total").textContent = agg.totalScore || "?";
+    $("hero-of").textContent = "/100";
+    $("hero-one").textContent = `「${albumTitle}」· ${selectedAlbumTracks.length}轨`;
+    $("hero-chips").innerHTML = hitTracks.slice(0, 5).map(t => `<span>🔥 <b>${escapeHTML(t)}</b></span>`).join("");
+    $("result-hero").classList.add("show");
+
+    setStatus("score-status", `✓ 专辑卡已生成 · ${selectedAlbumTracks.length}轨 · 热门: ${hitTracks.slice(0,3).join(", ") || "无"}`, "ok");
+    toast("专辑评分卡已生成", "ok");
+    markStep(4, "done");
+    setTimeout(() => $("card-stage").scrollIntoView({behavior: "smooth", block: "start"}), 300);
+
+    // 保存专辑到素材库
+    const albumId = "album_" + Date.now();
+    await fetch(`${API}/api/library/album`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        albumData: { id: albumId, title: albumTitle, artist: albumMeta.artist, hitTracks, trackIds: selectedAlbumTracks.map(t => t.id), trackCount: selectedAlbumTracks.length }
+      })
+    });
+  } catch (e) {
+    setStatus("score-status", "✕ " + e.message, "err");
+    toast("专辑卡片生成失败：" + e.message, "err");
+    markStep(4, "active", "失败");
+  }
+}
+
+function buildAlbumCardDataVisual(tracks) {
+  const dims = ["词","曲","编","唱","混"];
+  const totals = {};
+  let n = 0;
+  for (const dim of dims) totals[dim] = 0;
+  let totalScore = 0;
+
+  for (const t of tracks) {
+    const sc = t.scores;
+    if (!sc || !sc.totalScore) continue;
+    n++;
+    for (const dim of dims) {
+      if (sc[dim]?.score != null) totals[dim] += sc[dim].score;
+    }
+    totalScore += sc.totalScore;
+  }
+
+  const avg = {};
+  for (const dim of dims) {
+    avg[dim] = n > 0 ? Math.round(totals[dim] / n) : 0;
+  }
+  avg.totalScore = n > 0 ? Math.round(totalScore / n) : 0;
+  avg.trackCount = n;
+  return avg;
+}
+
+// 更新 DRAFT_FIELDS 加入专辑字段
+const ALBUM_DRAFT_FIELDS = ["album-name-input", "album-hit-input"];
+ALBUM_DRAFT_FIELDS.forEach(id => {
+  if (!DRAFT_FIELDS.includes(id)) DRAFT_FIELDS.push(id);
+});
+
+// ============ Settings ============
+function toggleSettings() {
+  const ov = $("settings-overlay");
+  const isOpen = ov.style.display === "flex";
+  ov.style.display = isOpen ? "none" : "flex";
+  if (!isOpen) loadSettingsIntoForm();
+}
+
+async function loadSettingsIntoForm() {
+  try {
+    const res = await fetch(`${API}/api/settings`);
+    const data = await res.json();
+    if (data.success && data.settings) {
+      $("set-model").value = data.settings.model || "";
+      $("set-url").value = data.settings.apiUrl || "";
+      $("set-key").value = data.settings.apiKey || "";
+    }
+  } catch (e) {}
+}
+
+async function saveSettings() {
+  const model = $("set-model").value.trim();
+  const apiUrl = $("set-url").value.trim();
+  const apiKey = $("set-key").value.trim();
+
+  try {
+    const res = await fetch(`${API}/api/settings`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ model, apiUrl, apiKey }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast("设置已保存 · 重启服务生效", "ok");
+      toggleSettings();
+      // 更新状态 pill
+      updateServerPill();
+    } else {
+      toast("保存失败", "err");
+    }
+  } catch (e) {
+    toast("保存失败: " + e.message, "err");
+  }
+}
+
+async function updateServerPill() {
+  try {
+    const res = await fetch(`${API}/api/status`);
+    const data = await res.json();
+    const pill = $("server-pill");
+    pill.className = "status-pill";
+    if (data.deepseekKey) {
+      pill.classList.add("ok");
+      $("server-text").textContent = `v${data.version} · ${data.model || "?"} · Key OK`;
+    } else {
+      pill.classList.add("bad");
+      $("server-text").textContent = `v${data.version} · Key MISSING (点击配置)`;
+    }
+  } catch (e) {
+    // 保持原样
+  }
+}
+
+// ============ Init: server status ============
+(async function init() {
+  loadAudioList();
+  bindDraftSavers();
+  const restored = restoreDraft();
+  $("cover-manual").style.display = "flex";
+  if (window._manualCoverUrl) {
+    $("cover-img").src = window._manualCoverUrl;
+    $("cover-preview").style.display = "flex";
+    updateCoverButtons();
+  }
+  onLyricsInput();
+  const pill = $("server-pill");
+  try {
+    const res = await fetch(`${API}/api/status`);
+    const data = await res.json();
+    if (data.deepseekKey) {
+      pill.classList.add("ok");
+      $("server-text").textContent = `v${data.version} · ${data.model || "?"} · Key OK`;
+    } else {
+      pill.classList.add("bad");
+      $("server-text").textContent = `v${data.version} · Key MISSING (点击配置)`;
+      toast("未配置 API Key — 点击状态栏配置", "err");
+    }
+  } catch (e) {
+    pill.classList.add("bad");
+    $("server-text").textContent = "服务器未连接 (localhost:3001)";
+    toast("无法连接服务器，请先启动 server.js", "err");
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>歌掘士 v3 — 五维评分卡</title>
+<style>
+/* ═══════════════════════════════════════════════════
+   Design System v3.1 — Editorial / Anti-AI Aesthetic
+   ═══════════════════════════════════════════════════ */
+:root {
+  --bg: #fafaf8;
+  --fg: #1a1a18;
+  --fg2: #555550;
+  --fg3: #8a8a82;
+  --line: #e0e0d8;
+  --accent: #c41e3a;
+  --surface: #f4f4f0;
+  --font-text: "Noto Serif SC", Georgia, "Times New Roman", serif;
+  --font-display: "Noto Sans SC", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Cascadia Code", monospace;
+}
+/* Theme: Darkroom */
+.theme-darkroom { --bg: #1a1a18; --fg: #f0f0ea; --fg2: #a0a090; --fg3: #6a6a60; --line: #2a2a28; --accent: #d4a853; --surface: #222220; }
+/* Theme: Blueprint */
+.theme-blueprint { --bg: #f4f6f8; --fg: #1a3a5c; --fg2: #4a6a8c; --fg3: #8aa0b8; --line: #dde4ec; --accent: #e05a3a; --surface: #e8ecf4; }
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--bg);color:var(--fg);font:16px/1.7 var(--font-text)}
+body{max-width:800px;margin:0 auto;padding:40px 24px}
+
+/* ── Card Frame ── */
+.card{background:var(--bg);border:1px solid var(--fg);margin:20px 0;position:relative}
+.card-header{display:flex;align-items:center;padding:20px 24px;border-bottom:1px solid var(--fg);gap:16px}
+.card-header .cover{width:72px;height:72px;background:var(--surface);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:32px;flex-shrink:0}
+.card-header .cover img{width:100%;height:100%;object-fit:cover}
+.card-header .info{flex:1;min-width:0}
+.card-header .artist{font:10px var(--font-mono);letter-spacing:2.5px;text-transform:uppercase;color:var(--fg3);margin-bottom:2px}
+.card-header .title{font:700 20px/1.3 var(--font-display);letter-spacing:-0.3px}
+.card-header .meta{font:11px var(--font-mono);color:var(--fg3);margin-top:3px}
+.card-header .total{text-align:right;flex-shrink:0}
+.card-header .total .num{font:700 42px/1 var(--font-mono);display:block}
+.card-header .total .lab{font:10px var(--font-mono);color:var(--fg3);letter-spacing:1px;text-transform:uppercase}
+/* Heat badge */
+.heat-badge{display:inline-flex;align-items:center;gap:4px;font:10px var(--font-mono);padding:3px 10px;border:1px solid var(--line);margin-top:4px}
+.heat-badge.high{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.heat-badge.mid{background:var(--surface);color:var(--fg2)}
+.heat-badge.low{background:var(--bg);color:var(--fg3)}
+
+/* ── Chart Area ── */
+.card-chart{padding:24px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:32px;flex-wrap:wrap;justify-content:center}
+.card-chart svg{flex-shrink:0}
+
+/* ── Score Bars ── */
+.card-scores{padding:20px 24px}
+.score-row{display:flex;align-items:center;padding:7px 0;border-bottom:1px dotted var(--line);gap:12px;font:13px var(--font-display)}
+.score-row:last-child{border-bottom:none}
+.score-dim{font-weight:700;font-size:14px;min-width:28px}
+.score-dim .cn{font:10px var(--font-mono);color:var(--fg3);font-weight:400;display:block}
+.score-bar{flex:1;height:6px;background:var(--line);position:relative}
+.score-bar .fill{height:100%;background:var(--fg);transition:width 0.6s ease}
+.score-bar .fill.accent{background:var(--accent)}
+.score-val{font:13px var(--font-mono);min-width:24px;text-align:right;font-weight:600}
+.score-rationale{font:11px/1.5 var(--font-text);color:var(--fg3);flex-basis:100%;padding-left:40px;padding-bottom:4px}
+
+/* ── Footer ── */
+.card-footer{padding:16px 24px;border-top:1px solid var(--fg);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.card-footer .oneliner{font:15px/1.5 var(--font-text);font-style:italic;color:var(--fg2)}
+.card-footer .tags{display:flex;gap:4px;flex-wrap:wrap}
+.card-footer .tags span{font:10px var(--font-mono);border:1px solid var(--fg3);padding:2px 8px;color:var(--fg3);letter-spacing:0.5px}
+
+/* ── Card Mark ── */
+.card-mark{position:absolute;top:-1px;right:-1px;background:var(--fg);color:var(--bg);font:10px var(--font-mono);padding:4px 10px;letter-spacing:2px}
+
+/* ── Print / Screenshot ── */
+@media print{body{background:#fff;padding:0}.card{border:1px solid #000;page-break-inside:avoid}}
+
+/* ── Loading ── */
+.loading{text-align:center;padding:60px;color:var(--fg3);font:14px var(--font-mono)}
+</style>
+</head>
+<body class="theme-editorial">
+
+<!-- ═══════════════════════════════════════════════════
+     The card is rendered by JS from embedded JSON data.
+     For static screenshot: pass data via URL param ?data=...
+     ═══════════════════════════════════════════════════ -->
+<div id="card-container">
+  <div class="loading">歌掘士 v3.1 · 五维评分卡</div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  Pentagon Radar Chart Renderer
+// ═══════════════════════════════════════════════════
+
+/**
+ * 从评分数据生成完整卡片 HTML
+ */
+function renderCard(data) {
+  const {
+    artist = "Unknown Artist",
+    title = "Unknown Album",
+    year = "",
+    label = "",
+    genre = "",
+    coverUrl = null,
+    scores = {},
+    totalScore = 0,
+    oneLiner = "",
+    tags = [],
+    heatScore = 0,
+    note = "",
+  } = data;
+
+  const dims = ["词", "曲", "编", "唱", "混"];
+  const dimsEn = ["Lyrics", "Composition", "Arrangement", "Performance", "Production"];
+  const colors = ["#c41e3a", "#1a3a5c", "#2d6a4f", "#b85c38", "#6b3a8c"];
+  const maxScore = 20;
+
+  // 兼容两种数据格式: {词: 14} 或 {词: {score: 14, rationale: "..."}}
+  function extractScore(val) {
+    if (val === null || val === undefined) return null;
+    if (typeof val === "number") return val;
+    if (typeof val === "object" && typeof val.score === "number") return val.score;
+    return null;
+  }
+  function extractRationale(val) {
+    if (val === null || val === undefined) return "";
+    if (typeof val === "object" && val.rationale) return val.rationale;
+    return "";
+  }
+
+  // Determine if vocal/instrumental
+  const hasLyrics = scores.词 !== null && scores.词 !== undefined;
+  const actualDims = hasLyrics ? dims : dims.filter(d => d !== "词");
+  const actualTotal = hasLyrics ? 100 : 80;
+  const actualScores = actualDims.map(d => extractScore(scores[d]) || 0);
+
+  // ── Pentagon SVG ──
+  const cx = 120, cy = 120, r = 105;
+  const angleStep = (2 * Math.PI) / actualDims.length;
+  const startAngle = -Math.PI / 2; // top
+
+  function getPoint(index, value) {
+    const val = value / maxScore;
+    const angle = startAngle + index * angleStep;
+    return {
+      x: cx + r * val * Math.cos(angle),
+      y: cy + r * val * Math.sin(angle),
+    };
+  }
+
+  function getAxisEnd(index) {
+    const angle = startAngle + index * angleStep;
+    return {
+      x: cx + r * Math.cos(angle),
+      y: cy + r * Math.sin(angle),
+    };
+  }
+
+  // Grid rings
+  let gridRings = "";
+  for (let ring = 1; ring <= 4; ring++) {
+    const pts = [];
+    for (let i = 0; i < actualDims.length; i++) {
+      const p = getPoint(i, ring * 5);
+      pts.push(`${p.x},${p.y}`);
+    }
+    gridRings += `<polygon points="${pts.join(" ")}" fill="none" stroke="var(--line)" stroke-width="${ring === 4 ? 0.8 : 0.4}"/>`;
+  }
+
+  // Axes
+  let axes = "";
+  for (let i = 0; i < actualDims.length; i++) {
+    const end = getAxisEnd(i);
+    axes += `<line x1="${cx}" y1="${cy}" x2="${end.x}" y2="${end.y}" stroke="var(--line)" stroke-width="0.3"/>`;
+  }
+
+  // Data polygon
+  const dataPts = [];
+  for (let i = 0; i < actualDims.length; i++) {
+    const p = getPoint(i, actualScores[i]);
+    dataPts.push(`${p.x},${p.y}`);
+  }
+
+  // All coordinates are relative to (0,0) at center — no double-translate
+  const chartSVG = `
+  <svg width="240" height="240" viewBox="0 0 240 240">
+    ${gridRings}
+    ${axes}
+    <polygon points="${dataPts.join(" ")}" fill="rgba(0,0,0,0.05)" stroke="var(--fg)" stroke-width="1.5" stroke-linejoin="round"/>
+    ${actualDims.map((dim, i) => {
+      const end = getAxisEnd(i);
+      const labelR = r + 18;
+      const labelAngle = startAngle + i * angleStep;
+      const lx = cx + labelR * Math.cos(labelAngle);
+      const ly = cy + labelR * Math.sin(labelAngle);
+      const score = actualScores[i];
+      return `<text x="${lx}" y="${ly}" text-anchor="middle" dominant-baseline="middle" font-family="monospace" font-size="10" fill="var(--fg2)">${dim} ${score}</text>`;
+    }).join("")}
+  </svg>`;
+
+  // ── Score bars ──
+  const scoreRows = dims.map((dim, i) => {
+    const rawVal = scores[dim];
+    const val = extractScore(rawVal);
+    const rationale = extractRationale(rawVal);
+
+    if (val === null) {
+      if (dim === "词" && !hasLyrics) {
+        return `
+        <div class="score-row" style="opacity:0.4">
+          <span class="score-dim">词<span class="cn">N/A</span></span>
+          <div class="score-bar"><div class="fill" style="width:0%"></div></div>
+          <span class="score-val">—</span>
+        </div>
+        <div class="score-rationale">纯器乐/电子音乐 — 不适用于歌词评分</div>`;
+      }
+      return "";
+    }
+    const pct = (val / maxScore) * 100;
+    const accentClass = val >= 17 ? " accent" : "";
+    const level = val >= 17 ? "突出" : val >= 14 ? "优秀" : val >= 9 ? "合格" : "短板";
+
+    return `
+    <div class="score-row">
+      <span class="score-dim">${dim}<span class="cn">${dimsEn[i]}</span></span>
+      <div class="score-bar"><div class="fill${accentClass}" style="width:${pct}%"></div></div>
+      <span class="score-val">${val}</span>
+      <span style="font:10px var(--font-mono);color:var(--fg3);min-width:28px">${level}</span>
+    </div>
+    ${rationale ? `<div class="score-rationale">${escapeHTML(rationale)}</div>` : ""}`;
+  }).join("");
+
+  // ── Tags ──
+  const tagHTML = (tags || []).map(t => `<span>#${t}</span>`).join("");
+
+  // ── Metadata line ──
+  const metaParts = [];
+  if (year) metaParts.push(year);
+  if (label) metaParts.push(label);
+  if (genre) metaParts.push(genre);
+  const metaLine = metaParts.join(" · ");
+
+  // ── Cover ──
+  const coverHTML = coverUrl
+    ? `<img src="${coverUrl}" alt="${title}" onerror="this.parentElement.innerHTML='💿'">`
+    : "💿";
+
+  // ── Full card ──
+  const totalDisplay = hasLyrics ? `${totalScore}<span style="font-size:14px;color:var(--fg3)">/100</span>` : `${totalScore}<span style="font-size:14px;color:var(--fg3)">/80</span>`;
+
+  return `
+  <div class="card">
+    <div class="card-mark">REVIEW</div>
+    <div class="card-header">
+      <div class="cover">${coverHTML}</div>
+      <div class="info">
+        <div class="artist">${escapeHTML(artist)}</div>
+        <div class="title">${escapeHTML(title)}</div>
+        ${metaLine ? `<div class="meta">${escapeHTML(metaLine)}</div>` : ""}
+        ${typeof heatScore === 'object' && heatScore.stars > 0
+          ? `<span class="heat-badge ${heatScore.stars >= 4 ? 'high' : heatScore.stars >= 3 ? 'mid' : 'low'}">${heatScore.label}</span>`
+          : ""}
+      </div>
+      <div class="total">
+        <span class="num">${totalDisplay}</span>
+        <span class="lab">总分</span>
+      </div>
+    </div>
+
+    <div class="card-chart">
+      ${chartSVG}
+    </div>
+
+    <div class="card-scores">
+      ${scoreRows}
+    </div>
+
+    <div class="card-footer">
+      ${oneLiner ? `<div class="oneliner">"${escapeHTML(oneLiner)}"</div>` : ""}
+      ${tagHTML ? `<div class="tags">${tagHTML}</div>` : ""}
+    </div>
+  </div>
+  ${note ? `<p style="text-align:center;font-size:11px;color:var(--fg3);margin-top:8px;font-family:var(--font-mono)">${escapeHTML(note)}</p>` : ""}
+  `;
+}
+
+function escapeHTML(str) {
+  if (!str) return "";
+  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// ═══════════════════════════════════════════════════
+//  Load data and render
+// ═══════════════════════════════════════════════════
+
+function getCardData() {
+  // 1. URL param ?data=base64json
+  const urlParams = new URLSearchParams(window.location.search);
+  const dataParam = urlParams.get("data");
+  if (dataParam) {
+    try {
+      return JSON.parse(atob(dataParam));
+    } catch (e) {
+      // try unencoded
+      try { return JSON.parse(dataParam); } catch (e2) {}
+    }
+  }
+
+  // 2. URL hash
+  if (window.location.hash && window.location.hash.length > 1) {
+    try {
+      return JSON.parse(atob(window.location.hash.slice(1)));
+    } catch (e) {}
+  }
+
+  // 3. Embedded window.__CARD_DATA__
+  if (window.__CARD_DATA__) {
+    return window.__CARD_DATA__;
+  }
+
+  // 4. Demo data
+  return {
+    artist: "The Kills",
+    title: "Midnight Boom",
+    year: "2008",
+    label: "Domino",
+    genre: "Garage Rock / Indie Rock",
+    scores: { 词: 14, 曲: 17, 编: 18, 唱: 13, 混: 16 },
+    totalScore: 78,
+    oneLiner: "编曲是教科书级的极简主义——12首歌没有一个多余的音符。",
+    tags: ["独立摇滚", "车库复兴", "极简制作", "冷门好专"],
+    note: "评分基于 2026-08-04 听感记录 + AI辅助分析",
+  };
+}
+
+function applyTheme() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const theme = urlParams.get("theme") || "editorial";
+  if (theme === "darkroom" || theme === "blueprint") {
+    document.body.className = `theme-${theme}`;
+  }
+}
+
+// ── Render ──
+try {
+  const data = getCardData();
+  applyTheme();
+  document.getElementById("card-container").innerHTML = renderCard(data);
+} catch (err) {
+  document.getElementById("card-container").innerHTML =
+    `<div class="loading" style="color:var(--accent)">渲染错误: ${escapeHTML(err.message)}</div>`;
+}
+</script>
+</body>
+</html>
