@@ -422,6 +422,11 @@ function buildAggregate(r) {
   }
   a.summary=wp?.extract||lf?.summary||null;
   if(rc?.text)a.reception={text:rc.text};
+  if (rc?.text) {
+    // 一句话评价：提取带媒体名的句子（Pitchfork/NME/Guardian/Clash/Dork 等）
+    const quotes = extractReceptionQuotes(rc.text);
+    if (quotes.length) a.receptionQuotes = quotes;
+  }
   if(ps?.text)a.personnel={text:ps.text};
   if(ch?.text)a.charts={text:ch.text};
 
@@ -530,6 +535,12 @@ export function rankTitleScore(name, query) {
   }
   if (/(deluxe|bonus|expanded|super\s*deluxe|live|remix|instrumental|karaoke|anniversary|remaster|acoustic)/i.test(name)) s -= 25;
   return s;
+}
+
+export function extractReceptionQuotes(text) {
+  if (!text) return [];
+  const quoteMatches = text.match(/[^。！？]*?(?:Pitchfork|NME|The Guardian|Clash|Dork|Mojo|Q magazine|Uncut|The Observer|The Line of Best Fit|DIY|Record Collector)[^。！？]*[。！？]/g) || [];
+  return quoteMatches.map((s) => s.trim()).filter((s) => s.length >= 20 && s.length <= 200).slice(0, 3);
 }
 
 // ══════════════════════════════════════════════

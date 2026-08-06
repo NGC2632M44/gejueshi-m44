@@ -415,7 +415,8 @@ function renderCoverPage(data) {
         '</div>' +
         (data.oneLiner ? '<div class="c-oneliner">「' + escapeHTML(data.oneLiner) + '」</div>' : "") +
         (data.mode === "album" && data.hitTracks && data.hitTracks.length ? '<div class="c-tags" style="font-size:13px">' + data.hitTracks.map(t => '<span class="chip">🔥 ' + escapeHTML(t) + '</span>').join("") + '</div>' : (data.tags && data.tags.length ? '<div class="c-tags">' + data.tags.map(t => '<span class="chip">#' + escapeHTML(t) + '</span>').join("") + '</div>' : "")) +
-      '</div>' +
+        (data.receptionQuotes && data.receptionQuotes.length ? '<div class="c-summary">' + data.receptionQuotes.map(q => '「' + escapeHTML(q) + '」').join('<br>') + '</div>' : "") +
+        '</div>' +
     '</div>' +
   '</section>';
 }

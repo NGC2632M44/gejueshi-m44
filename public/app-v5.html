@@ -271,6 +271,10 @@ details.manual .tip{font:11px/1.7 var(--f-sans);color:var(--ink-3);margin:10px 0
               <input type="text" id="v-duration" placeholder="自动检测值" oninput="saveDraft()">
             </div>
           </div>
+          <div class="row" style="margin-top:8px">
+            <div class="field" style="flex:3"><label>SongBPM URL（手动粘贴，用于纠正 BPM/Key）</label><input type="text" id="v-songbpm-url" placeholder="https://songbpm.com/@artist/title-xxxx" oninput="saveDraft()"></div>
+            <div class="field" style="flex:1"><button class="btn ghost" onclick="verifySongBPMUrl()">验证并交叉</button></div>
+          </div>
         </div>
         <!-- 专辑模式: 曲目管理 -->
         <div id="album-track-section" style="display:none;margin-top:16px;border:1px solid var(--gold);border-radius:10px;padding:16px 18px;background:var(--bg)">
@@ -484,6 +488,7 @@ const DRAFT_FIELDS = [
   "note-highlight", "note-similar", "note-lyrics",
   "meta-artist", "meta-title", "meta-year", "meta-label", "meta-genre", "meta-album",
   "cover-url", "lyrics-text", "v-bpm", "v-key", "v-duration",
+  "v-songbpm-url",
 ];
 
 let _saveTimer = null;
@@ -856,6 +861,60 @@ function showMIRPanel(mirData) {
   }
 }
 
+async function verifySongBPMUrl() {
+  const url = $("v-songbpm-url").value.trim();
+  if (!url) return toast("请粘贴 songbpm.com 的歌曲 URL", "err");
+  busy("analyze-status", "SongBPM 验证中…");
+  try {
+    const res = await fetch(`${API}/api/songbpm-url`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ url }),
+    });
+    const data = await res.json();
+    if (!data.success || (!data.bpm && !data.key)) {
+      setStatus("analyze-status", "✕ SongBPM 解析失败", "err");
+      toast("SongBPM 解析失败：" + (data.error || "无数据"), "err");
+      return;
+    }
+    const externalSources = [{ source: "songbpm", bpm: data.bpm, key: data.key }];
+    const crossRes = await fetch(`${API}/api/cross-reference`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ localResult: audioFeatures, externalSources }),
+    });
+    const cross = await crossRes.json();
+    if (!cross.success) throw new Error(cross.error || "交叉验证失败");
+    const rec = cross.recommendedFields || {};
+    const mirData = {
+      sources: [
+        { name: "hooktheory", status: "no_data" },
+        { name: "spotify", status: "no_config" },
+        { name: "songbpm", status: "ok" },
+        { name: "acousticbrainz", status: "retired" },
+        { name: "musicbrainz", status: "found" },
+      ],
+      crossReference: cross.crossReference,
+      external_results: externalSources,
+      recommended: {
+        bpm: rec.bpm || data.bpm,
+        key: rec.key || data.key,
+        bpm_confidence: rec.bpm_confidence ?? 0.55,
+        key_confidence: rec.key_confidence ?? 0.55,
+        source_count: rec.source_count || 1,
+        consensus_level: cross.crossReference?.confidence_level || "medium",
+      },
+    };
+    window._mirResult = mirData;
+    showMIRPanel(mirData);
+    setStatus("analyze-status", "✓ SongBPM 验证完成", "ok");
+    toast("SongBPM: " + (data.bpm ? data.bpm + " BPM " : "") + (data.key || ""), "ok");
+  } catch (e) {
+    setStatus("analyze-status", "✕ " + e.message, "err");
+    toast("验证失败：" + e.message, "err");
+  }
+}
+
 function renderGuide(md) {
   const esc = escapeHTML(md);
   return esc
@@ -925,6 +984,9 @@ async function runResearch() {
     const researchErrors = (researchData.errors || []).filter(Boolean);
     if (researchErrors.length) {
       strip.innerHTML += `<div style="width:100%;font:10px var(--f-mono);color:var(--ink-3);padding:4px 0">⚠️ 部分数据源失败: ${escapeHTML(researchErrors.join(" | "))}</div>`;
+    }
+    if (agg.receptionQuotes && agg.receptionQuotes.length) {
+      strip.innerHTML += `<div style="width:100%;font:12px/1.8 var(--f-serif);color:var(--ink-2);padding:6px 0">${agg.receptionQuotes.map(q => '「' + escapeHTML(q) + '」').join('<br>')}</div>`;
     }
 
     strip.style.display = "flex";
@@ -1299,6 +1361,7 @@ async function runScoring() {
         tags: finalScores.tags || [],
         coverUrl: getActiveCoverUrl(),
         summary: (researchData && researchData.aggregate && researchData.aggregate.summary) || "",
+        receptionQuotes: (researchData && researchData.aggregate && researchData.aggregate.receptionQuotes) || [],
         heat: window._heatData || {},
         note: `M44 Sound Anatomy · ${new Date().toLocaleDateString('zh-CN').replace(/\//g,'-')}`,
       })
