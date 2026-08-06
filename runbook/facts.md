@@ -5,7 +5,7 @@
 | # | 事实 | 状态 | 验证方式 |
 |---|---|---|---|
 | F1 | audio/ 下 4/7 个 .mp3 实为 WebM/Matroska（EBML 头 1A 45 DF A3），3 个为真 MP3（ID3） | verified | 读取全部音频文件魔数 |
-| F2 | mutagen / demucs / spleeter / essentia / pydub 未安装；sonara / librosa / pyloudnorm / scipy / soundfile / ffmpeg 可用 | verified | Python importlib 探测 + ffmpeg -version |
+| F2 | demucs / spleeter / essentia / pydub 未安装；sonara / librosa / pyloudnorm / scipy / soundfile / ffmpeg / mutagen（Phase1 已装）/ pytest（Phase1 已装）可用 | verified | Python importlib 探测 + ffmpeg -version |
 | F3 | sonara 对 Camera WAV（相对路径）返回 BPM 125.996 ≈ 126（正确），Key 无输出、候选 G# major（错误） | verified | 本机实跑 sonara.analyze_file |
 | F4 | sonara 对含中文的绝对路径报错（???），对两个假 MP3 解码失败 | verified | 本机实跑 |
 | F5 | server.js 的评分/研究/MIR/自查接口只读环境变量或请求头，settings.json 的 model/apiUrl/apiKey 不生效；verify-card 硬编码 DeepSeek URL | verified | 代码核查 |
@@ -18,9 +18,12 @@
 | F12 | Spotify 新应用 audio-features 受限（2024-11-27 起 403）、Developer Mode 需 Premium（2026-02 起） | verified | 官方公告 + TechCrunch + spotipy issue |
 | F13 | 现有两个回归脚本（True Peak、MIR 校准）实跑通过 | verified | 本机执行 |
 | F14 | MIREX 2019 调性检测准确率 50%~90%，“其他错误”最高 20%+ | verified | 官方结果页 |
-| F15 | 项目无 git 仓库；`Desktop\歌掘士_backup_20260806\` 为历史全量备份 | verified | 目录/状态核查 |
+| F15 | 项目 git 仓库已初始化（根提交 b9af628）；`Desktop\歌掘士_backup_20260806\` 为历史全量备份 | verified | git init + commit |
 | F16 | 2026-08-06 建立全新基线备份 `Desktop\歌掘士_backup_v2_baseline_20260806\`（排除 node_modules/.git） | verified | robocopy exit=1 |
 | F17 | 项目根目录的 `启动M44.bat` 不存在，只有 `启动M44.vbs`；桌面另有 `启动M44.bat` | verified | 目录核查 |
+| F18 | 启动脚本已移除明文 Key；桌面 bat 目录已修正指向 歌掘士 项目 | verified | Phase6 修改后核查 |
+| F19 | 版本统一为 3.4.0（package.json 为服务端唯一来源；Python 常量同步） | verified | package.json / analyze_audio.py / /api/status |
+| F20 | 全量测试：npm test 7 项 + pytest 9 项通过；album 集成测试通过 | verified | 本机执行 |
 
 ## 未验证 / 待用户提供
 
@@ -35,3 +38,4 @@
 - 假 MP3（WebM 容器）是 sonara/mutagen/码率检测全部失效的根因 → 引擎必须做容器识别 + ffmpeg 归一化
 - sonara 在 Windows 上不能吃含中文的绝对路径 → 用项目内相对路径或 ffmpeg 临时 WAV
 - 调性检测单算法不可信 → BPM/Key 置信度必须按“多引擎 + 多源一致度”计算
+- 素材库入库顺序曾是 bug：autoOrganizeAlbum 需先于 push，否则 albumId 丢失

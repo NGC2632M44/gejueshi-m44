@@ -658,8 +658,9 @@ function autoOrganizeAlbum(lib, trackData) {
 app.get("/api/status", (req, res) => {
   const lib = readLibrary();
   const settings = getEffectiveSettings();
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf-8"));
   res.json({
-    version: "3.3.0",
+    version: pkg.version,
     deepseekKey: !!settings.apiKey,
     model: settings.model,
     lastfmKey: !!process.env.LASTFM_API_KEY,
@@ -1223,7 +1224,7 @@ app.post("/api/library/track-to-album", (req, res) => {
 app.listen(PORT, () => {
   console.log("");
   console.log("  ╔══════════════════════════════════════════════╗");
-  console.log("  ║    M44 v3.2 — 五维评分 + 专辑模式          ║");
+  console.log("  ║    M44 v3.4 — 五维评分 + 专辑模式          ║");
   console.log("  ║  词·曲·编·唱·混  →  五边形雷达图          ║");
   console.log("  ╠══════════════════════════════════════════════╣");
   console.log(`  ║  http://localhost:${PORT}                     ║`);
