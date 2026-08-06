@@ -6,7 +6,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "test": "node --test services/test_ai.js",
+    "test:py": "python -m pytest scripts/ -q"
   },
   "keywords": [
     "music",

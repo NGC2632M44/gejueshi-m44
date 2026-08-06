@@ -9,6 +9,7 @@ import { researchAlbum, searchNetease, getNeteaseDetail, getNeteaseAlbumComments
 import { generatePodcastScript } from "./services/script-generator.js";
 import { fullAnalysis, generateListeningGuide, buildScoringPrompt, extractPlatformRatings, calcHeatScore, crossReference, reverseKeyFromTab, assessKeyReliability, buildAlbumCardData } from "./services/audio-analyzer.js";
 import { mirCrossReference } from "./services/mir-cross-ref.js";
+import { callAI, getEffectiveSettings, maskApiKey, readSettings, writeSettings } from "./services/ai.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -126,65 +127,6 @@ function sanitizeScores(scores, lyricsText = "") {
   }
 }
 
-// ── 模型设置持久化 ──
-const SETTINGS_PATH = path.join(__dirname, "data", "settings.json");
-const DEFAULT_SETTINGS = {
-  model: "deepseek-v4-flash",
-  apiUrl: "https://api.deepseek.com/v1/chat/completions",
-  apiKey: "",
-};
-
-function readSettings() {
-  try {
-    if (fs.existsSync(SETTINGS_PATH)) {
-      return { ...DEFAULT_SETTINGS, ...JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf-8")) };
-    }
-  } catch (_) {}
-  return { ...DEFAULT_SETTINGS };
-}
-
-function writeSettings(data) {
-  const dir = path.dirname(SETTINGS_PATH);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(data, null, 2), "utf-8");
-}
-
-function getEffectiveSettings() {
-  const stored = readSettings();
-  return {
-    model: stored.model || DEFAULT_SETTINGS.model,
-    apiUrl: stored.apiUrl || DEFAULT_SETTINGS.apiUrl,
-    apiKey: stored.apiKey || process.env.DEEPSEEK_API_KEY || "",
-  };
-}
-
-// ── DeepSeek fetch with retry ──
-async function deepseekFetch(body, apiKey, retries = 2, apiUrl = null) {
-  const settings = getEffectiveSettings();
-  const url = apiUrl || settings.apiUrl;
-  const key = apiKey || settings.apiKey;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    if (attempt > 0) {
-      const delay = Math.min(2000 * Math.pow(2, attempt - 1), 8000);
-      console.log(`   ⏳ 重试 ${attempt}/${retries} (${delay}ms)...`);
-      await new Promise(r => setTimeout(r, delay));
-    }
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
-      body: JSON.stringify(body),
-    });
-    if (res.status === 503) continue; // 服务繁忙，重试
-    return res;
-  }
-  // 最后一次尝试（即使503也返回）
-  return fetch("https://api.deepseek.com/v1/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-    body: JSON.stringify(body),
-  });
-}
-
 // ============================================================
 // 静态文件服务
 // ============================================================
@@ -299,8 +241,8 @@ app.post("/api/analyze/guide", async (req, res) => {
 // [新增 v3.1] API: 五维评分 (DeepSeek + 平台校准)
 // ═══════════════════════════════════════════════════
 app.post("/api/analyze/score", async (req, res) => {
-  const { audioFeatures, listeningAnswers, albumMetadata, researchData, platformRatings, model = "deepseek-v4-flash" } = req.body;
-  const apiKey = req.headers["x-api-key"] || process.env.DEEPSEEK_API_KEY;
+  const { audioFeatures, listeningAnswers, albumMetadata, researchData, platformRatings, model } = req.body;
+  const apiKey = req.headers["x-api-key"] || getEffectiveSettings().apiKey;
 
   if (!apiKey) {
     return res.status(400).json({ error: "未配置 DEEPSEEK_API_KEY", needsApiKey: true });
@@ -339,8 +281,7 @@ app.post("/api/analyze/score", async (req, res) => {
       researchData
     );
 
-    const response = await deepseekFetch({
-      model,
+    const response = await callAI({
       temperature: 0.4,
       thinking: { type: "enabled" },
       messages: [
@@ -374,7 +315,7 @@ BPM、LUFS、频谱这些数字只是辅助感受的参考，不要拿来下技�
         },
         { role: "user", content: prompt },
       ],
-    }, apiKey);
+    }, { apiKey });
 
     if (!response.ok) {
       const body = await response.text();
@@ -492,15 +433,14 @@ app.get("/api/research/ai", async (req, res) => {
   const type = (req.query.type || "auto").trim(); // "album" | "song" | "auto"
   if (!q) return res.status(400).json({ error: "请输入专辑名/歌曲名+艺术家" });
 
-  const apiKey = req.headers["x-api-key"] || process.env.DEEPSEEK_API_KEY;
+  const apiKey = req.headers["x-api-key"] || getEffectiveSettings().apiKey;
   if (!apiKey) return res.status(400).json({ error: "未配置 DEEPSEEK_API_KEY" });
 
   console.log(`\n🤖 AI评分查询: "${q}"`);
   const start = Date.now();
 
   try {
-    const response = await deepseekFetch({
-      model: "deepseek-v4-flash",
+    const response = await callAI({
       max_tokens: 2048,
       temperature: 0.1,
       messages: [{
@@ -532,7 +472,7 @@ JSON格式:
         role: "user",
         content: `查询${type === "song" ? "这首单曲" : type === "album" ? "这张专辑" : "这个作品"}的信息：${q}${type === "song" ? "\n\n这是一首单曲/歌曲。请优先提供该单曲在各平台的独立评分。如果该单曲没有独立评分，则提供所属专辑的评分并注明。" : ""}`,
       }],
-    }, apiKey);
+    }, { apiKey });
 
     if (!response.ok) throw new Error(`DeepSeek ${response.status}: ${await response.text()}`);
 
@@ -885,7 +825,7 @@ app.get("/api/mir-lookup", async (req, res) => {
   const q = (req.query.q || "").trim();
   if (!q) return res.status(400).json({ error: "请输入歌曲名+艺术家" });
 
-  const apiKey = req.headers["x-api-key"] || process.env.DEEPSEEK_API_KEY;
+  const apiKey = req.headers["x-api-key"] || getEffectiveSettings().apiKey;
   if (!apiKey) return res.status(400).json({ error: "未配置 DEEPSEEK_API_KEY，MIR查询不可用" });
 
   console.log(`\n🎵 MIR查询: "${q}"`);
@@ -940,8 +880,7 @@ app.get("/api/mir-lookup", async (req, res) => {
 
   // 否则用 AI 补充 (从训练数据中提取已知歌曲信息)
   try {
-    const response = await deepseekFetch({
-      model: "deepseek-v4-flash",
+    const response = await callAI({
       max_tokens: 512,
       temperature: 0.1,
       messages: [{
@@ -960,7 +899,7 @@ app.get("/api/mir-lookup", async (req, res) => {
         role: "user",
         content: `查询歌曲参数供交叉验证: ${q}`,
       }],
-    }, apiKey);
+    }, { apiKey });
 
     if (!response.ok) return res.json({ success: false, error: `AI ${response.status}` });
 
@@ -988,7 +927,7 @@ app.get("/api/mir-lookup", async (req, res) => {
 // ═══════════════════════════════════════════════════
 app.post("/api/verify-card", async (req, res) => {
   const { scores, artist, title, year, genre, audioFeatures, listeningAnswers, lyrics } = req.body;
-  const apiKey = req.headers["x-api-key"] || process.env.DEEPSEEK_API_KEY;
+  const apiKey = req.headers["x-api-key"] || getEffectiveSettings().apiKey;
   if (!apiKey) return res.status(400).json({ error: "未配置 DEEPSEEK_API_KEY" });
   if (!scores) return res.status(400).json({ error: "缺少 scores" });
 
@@ -1017,14 +956,10 @@ app.post("/api/verify-card", async (req, res) => {
   }).join(",\n  ");
 
   try {
-    const resp = await fetch("https://api.deepseek.com/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: "deepseek-v4-flash",
-        temperature: 0.1,
-        thinking: { type: "enabled" },
-        messages: [{
+    const resp = await callAI({
+      temperature: 0.1,
+      thinking: { type: "enabled" },
+      messages: [{
           role: "system",
           content: `你是音乐内容核查员。检查乐评卡片是否有事实问题。
 
@@ -1047,10 +982,8 @@ ${userGroundTruth || "（无）"}
         }, {
           role: "user",
           content: `核实以下乐评：\n\n${reviewText}\n\n音频特征：BPM ${audioFeatures?.bpm || "?"}，调性 ${audioFeatures?.key || "?"}，LUFS ${audioFeatures?.dynamics?.integrated_lufs || "?"}，质心 ${audioFeatures?.spectral?.centroid_mean || "?"}Hz`
-        }]
-      }),
-      signal: AbortSignal.timeout(120000),
-    });
+        }],
+    }, { apiKey, signal: AbortSignal.timeout(120000) });
 
     if (!resp.ok) return res.json({ success: false, error: `API ${resp.status}` });
     const data = await resp.json();
@@ -1274,7 +1207,16 @@ app.post("/api/songbpm-url", async (req, res) => {
 // ═══════════════════════════════════════════════════
 app.get("/api/settings", (req, res) => {
   const s = getEffectiveSettings();
-  res.json({ success: true, settings: s, hasEnvKey: !!process.env.DEEPSEEK_API_KEY });
+  res.json({
+    success: true,
+    settings: {
+      model: s.model,
+      apiUrl: s.apiUrl,
+      apiKey: maskApiKey(s.apiKey),
+      apiKeyConfigured: !!s.apiKey,
+    },
+    hasEnvKey: !!process.env.DEEPSEEK_API_KEY,
+  });
 });
 
 app.post("/api/settings", (req, res) => {
@@ -1285,7 +1227,16 @@ app.post("/api/settings", (req, res) => {
   if (apiKey !== undefined && apiKey) stored.apiKey = apiKey;
   writeSettings(stored);
   console.log(`⚙️ 模型设置已保存: ${stored.model} @ ${stored.apiUrl}`);
-  res.json({ success: true, settings: getEffectiveSettings() });
+  const s = getEffectiveSettings();
+  res.json({
+    success: true,
+    settings: {
+      model: s.model,
+      apiUrl: s.apiUrl,
+      apiKey: maskApiKey(s.apiKey),
+      apiKeyConfigured: !!s.apiKey,
+    },
+  });
 });
 
 // ═══════════════════════════════════════════════════

@@ -1558,7 +1558,11 @@ async function loadSettingsIntoForm() {
     if (data.success && data.settings) {
       $("set-model").value = data.settings.model || "";
       $("set-url").value = data.settings.apiUrl || "";
-      $("set-key").value = data.settings.apiKey || "";
+      // 只显示掩码 Key；输入框留空，避免把掩码当新 Key 存回去
+      $("set-key").value = "";
+      $("set-key").placeholder = data.settings.apiKeyConfigured
+        ? `已配置（${data.settings.apiKey || "sk-****"}）`
+        : "sk-...";
     }
   } catch (e) {}
 }
@@ -1567,12 +1571,14 @@ async function saveSettings() {
   const model = $("set-model").value.trim();
   const apiUrl = $("set-url").value.trim();
   const apiKey = $("set-key").value.trim();
+  const body = { model, apiUrl };
+  if (apiKey) body.apiKey = apiKey; // 未填写则不覆盖已存 Key
 
   try {
     const res = await fetch(`${API}/api/settings`, {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ model, apiUrl, apiKey }),
+      body: JSON.stringify(body),
     });
     const data = await res.json();
     if (data.success) {
