@@ -12,3 +12,12 @@ export async function proxiedFetch(url, opts = {}) {
   const agent = new HttpsProxyAgent(proxyUrl());
   return fetch(url, { ...rest, agent });
 }
+
+// 直连优先，失败后走代理（国内环境音乐数据库经常需要代理）
+export async function smartFetch(url, opts = {}) {
+  try {
+    return await fetch(url, opts);
+  } catch (_) {
+    return proxiedFetch(url, opts);
+  }
+}

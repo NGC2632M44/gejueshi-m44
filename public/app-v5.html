@@ -510,6 +510,7 @@ function saveDraft() {
     });
     draft._manualCoverUrl = window._manualCoverUrl || null;
     draft._originalCoverUrl = window._originalCoverUrl || null;
+    draft.coverVersion = 2; // 旧草稿封面来源不可信，忽略
     try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); }
     catch(e) { /* quota exceeded, ignore */ }
     flashDraftIndicator();
@@ -528,13 +529,16 @@ function restoreDraft() {
         if (el) { el.value = draft[id]; hasContent = true; }
       }
     });
-    if (draft._manualCoverUrl) {
-      window._manualCoverUrl = draft._manualCoverUrl;
-      applyManualCoverSilent(draft._manualCoverUrl);
-      hasContent = true;
-    }
-    if (draft._originalCoverUrl) {
-      window._originalCoverUrl = draft._originalCoverUrl;
+    // 封面只恢复 v2 草稿（旧草稿可能存了错误的 Deluxe 封面）
+    if (draft.coverVersion === 2) {
+      if (draft._manualCoverUrl) {
+        window._manualCoverUrl = draft._manualCoverUrl;
+        applyManualCoverSilent(draft._manualCoverUrl);
+        hasContent = true;
+      }
+      if (draft._originalCoverUrl) {
+        window._originalCoverUrl = draft._originalCoverUrl;
+      }
     }
     if (hasContent) toast("已恢复上次编辑的草稿", "ok");
     return hasContent;
@@ -636,8 +640,8 @@ async function runAnalysis() {
 
     audioFeatures = data.audioFeatures;
     const af = audioFeatures;
-    const dur = af.duration_seconds ? Math.floor(af.duration_seconds/60) + ":" + String(Math.round(af.duration_seconds%60)).padStart(2,"0") : "?";
-    const durSec = af.duration_seconds ? Math.round(af.duration_seconds) + "s" : "?";
+    const dur = af.duration_seconds ? Math.floor(af.duration_seconds/60) + ":" + String(Math.floor(af.duration_seconds%60)).padStart(2,"0") : "?";
+    const durSec = af.duration_seconds ? Math.floor(af.duration_seconds) + "s" : "?";
 
     // 交叉检验面板
     $("verify-panel").style.display = "block";
@@ -1589,7 +1593,7 @@ async function loadLibraryTracks() {
           if (af.key) info.push(af.key);
           if (af.duration_seconds) {
             const m = Math.floor(af.duration_seconds / 60);
-            const s = Math.round(af.duration_seconds % 60);
+            const s = Math.floor(af.duration_seconds % 60);
             info.push(m + ":" + String(s).padStart(2, "0"));
           }
         }

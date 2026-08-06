@@ -9,7 +9,7 @@ import { researchAlbum, searchNetease, getNeteaseDetail, getNeteaseAlbumComments
 import { fullAnalysis, generateListeningGuide, buildScoringPrompt, extractPlatformRatings, calcHeatScore, crossReference, reverseKeyFromTab, assessKeyReliability, buildAlbumCardData } from "./services/audio-analyzer.js";
 import { mirCrossReference } from "./services/mir-cross-ref.js";
 import { callAI, getEffectiveSettings, maskApiKey, readSettings, writeSettings } from "./services/ai.js";
-import { proxiedFetch } from "./services/proxy-fetch.js";
+import { proxiedFetch, smartFetch } from "./services/proxy-fetch.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -381,7 +381,7 @@ app.post("/api/card/v4", async (req, res) => {
   // 封面转 base64：彻底消除跨域问题（预览 + html2canvas 导出均可靠）
   if (cardData.coverUrl && /^https?:\/\//.test(cardData.coverUrl)) {
     try {
-      const imgRes = await proxiedFetch(cardData.coverUrl, {
+      const imgRes = await smartFetch(cardData.coverUrl, {
         signal: AbortSignal.timeout(6000),
         headers: { "User-Agent": "Mozilla/5.0" },
       });
@@ -733,7 +733,7 @@ app.get("/api/song-lookup", async (req, res) => {
   if (!q) return res.status(400).json({ error: "请输入歌曲名+艺术家" });
   try {
     const mbUrl = `https://musicbrainz.org/ws/2/recording/?query=${encodeURIComponent(q)}&fmt=json&limit=3`;
-    const mbRes = await proxiedFetch(mbUrl, {
+    const mbRes = await smartFetch(mbUrl, {
       headers: { "User-Agent": "Gejueshi/1.0 (Music Research; +http://localhost:3001)" },
       signal: AbortSignal.timeout(8000),
     });
@@ -775,7 +775,7 @@ app.get("/api/mir-lookup", async (req, res) => {
   let mbResult = null;
   try {
     const mbUrl = `https://musicbrainz.org/ws/2/recording/?query=${encodeURIComponent(q)}&fmt=json&limit=2`;
-    const mbRes = await proxiedFetch(mbUrl, {
+    const mbRes = await smartFetch(mbUrl, {
       headers: { "User-Agent": "Gejueshi/3.2 (Music Research; +http://localhost:3001)" },
       signal: AbortSignal.timeout(8000),
     });

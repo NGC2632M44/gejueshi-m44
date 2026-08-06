@@ -5,6 +5,7 @@
 
 import fetch from "node-fetch";
 import { HttpsProxyAgent } from "https-proxy-agent";
+import { smartFetch } from "./proxy-fetch.js";
 
 const T = 20000;
 const MB_UA = "Gejueshi/1.0 (Music Research; +http://localhost:3001)";
@@ -188,7 +189,7 @@ function parseWikiScoringTable(html) {
 // ══════════════════════════════════════════════
 
 async function fetchMusicBrainz(query) {
-  const groups = (await(await fetch(`https://musicbrainz.org/ws/2/release-group/?query=${encodeURIComponent(query)}&fmt=json&limit=100`,{headers:{"User-Agent":MB_UA,"Accept":"application/json"},signal:AbortSignal.timeout(T)})).json())?.["release-groups"]||[];
+  const groups = (await(await smartFetch(`https://musicbrainz.org/ws/2/release-group/?query=${encodeURIComponent(query)}&fmt=json&limit=100`,{headers:{"User-Agent":MB_UA,"Accept":"application/json"},signal:AbortSignal.timeout(T)})).json())?.["release-groups"]||[];
   if(!groups.length)return null;
   const qW=query.toLowerCase().split(/\s+/).filter(w=>w.length>2),qL=query.toLowerCase().trim();
   const scored=groups.map(g=>{let s=(g.score||0)*1;const t=g["primary-type"]||"";if(t==="Album")s+=60;else if(/single|ep/i.test(t))s-=50;
@@ -199,9 +200,9 @@ async function fetchMusicBrainz(query) {
     if(g["first-release-date"]){const y=parseInt(g["first-release-date"].substring(0,4));if(y&&y>=1950&&y<=2028){if(y>=1970&&y<=2000)s+=Math.min((2000-y)*0.5+15,30);else if(y>2010)s-=(y-2010)*3;}}
     return{group:g,score:s};}).sort((a,b)=>b.score-a.score);
   const best=scored[0];if(!best)return null;const p=best.group;
-  const list=await(await fetch(`https://musicbrainz.org/ws/2/release?query=rgid:${p.id}&fmt=json&inc=artist-credits+labels+release-events&limit=5`,{headers:{"User-Agent":MB_UA,"Accept":"application/json"},signal:AbortSignal.timeout(T)})).json();
+  const list=await(await smartFetch(`https://musicbrainz.org/ws/2/release?query=rgid:${p.id}&fmt=json&inc=artist-credits+labels+release-events&limit=5`,{headers:{"User-Agent":MB_UA,"Accept":"application/json"},signal:AbortSignal.timeout(T)})).json();
   let pick=null;
-  for(const r of list?.releases||[]){const rd=await(await fetch(`https://musicbrainz.org/ws/2/release/${r.id}?fmt=json&inc=recordings+labels+artist-credits+tags+ratings`,{headers:{"User-Agent":MB_UA,"Accept":"application/json"},signal:AbortSignal.timeout(T)})).json();if((rd?.media||[]).some(m=>(m.tracks?.length||0)>0)||!pick)pick=rd;if((pick?.media||[]).some(m=>(m.tracks?.length||0)>0))break;}
+  for(const r of list?.releases||[]){const rd=await(await smartFetch(`https://musicbrainz.org/ws/2/release/${r.id}?fmt=json&inc=recordings+labels+artist-credits+tags+ratings`,{headers:{"User-Agent":MB_UA,"Accept":"application/json"},signal:AbortSignal.timeout(T)})).json();if((rd?.media||[]).some(m=>(m.tracks?.length||0)>0)||!pick)pick=rd;if((pick?.media||[]).some(m=>(m.tracks?.length||0)>0))break;}
   if(!pick)pick=list?.releases?.[0]||{};
   const artists=(pick?.["artist-credit"]||p?.["artist-credit"]||[]).filter(c=>typeof c==="object").map(c=>(c.name||c.artist?.name||"").trim()).filter(Boolean);
   const tracks=(pick?.media||[]).flatMap(m=>m.tracks||[]).map(t=>({number:t.number,title:t.title,length:(t.length||t.recording?.length)?fmtD(t.length||t.recording?.length):null}));
@@ -215,7 +216,7 @@ async function fetchMusicBrainz(query) {
   // Node 直连 archive.org 不稳，因此只取 Location，由前端 /api/proxy-image 代理加载）
   let artwork = null;
   try {
-    const ca = await fetch(`https://coverartarchive.org/release-group/${p.id}/front`, {
+    const ca = await smartFetch(`https://coverartarchive.org/release-group/${p.id}/front`, {
       redirect: "manual", signal: AbortSignal.timeout(T),
     });
     const loc = ca.headers.get("location");

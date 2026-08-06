@@ -10,7 +10,7 @@
 //   2. ≥2 个结果一致 (BPM误差≤2, 调名一致) → 候选值
 //   3. 外部多数派可覆盖本地算法结果
 
-import { proxiedFetch } from "./proxy-fetch.js";
+import { smartFetch } from "./proxy-fetch.js";
 //   4. 缓存: 同一查询 1 小时内不重复请求
 
 import { crossReference, assessKeyReliability } from "./audio-analyzer.js";
@@ -272,7 +272,7 @@ async function querySongBPM(query) { return null; }
 async function queryMusicBrainz(query) {
   try {
     const url = `https://musicbrainz.org/ws/2/recording/?query=${encodeURIComponent(query)}&fmt=json&limit=2`;
-    const res = await proxiedFetch(url, {
+    const res = await smartFetch(url, {
       headers: { "User-Agent": "Gejueshi/3.2 (MIR Cross-Ref; +http://localhost:3001)" },
       signal: AbortSignal.timeout(8000),
     });
