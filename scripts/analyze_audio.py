@@ -1448,7 +1448,9 @@ def analyze(filepath: str, deep: bool = False, output_path: Optional[str] = None
         import sonara
         sr_result = sonara.analyze_file(
             analysis_path, mode="playlist",
-            features=["key_candidates", "vocalness", "loudness", "structure"],
+            features=["key_candidates", "vocalness", "loudness", "structure",
+                      "energy", "danceability", "valence", "acousticness",
+                      "chords", "dissonance"],
             bpm_min=70.0, bpm_max=190.0,
         )
         bpm_sonara = round(float(sr_result.get('bpm', 0)), 1) if sr_result.get('bpm') else None
@@ -1618,6 +1620,12 @@ def analyze(filepath: str, deep: bool = False, output_path: Optional[str] = None
 
         # sonara 原始证据 (五维评分用)
         "sonara": sonara_evidence,
+
+        # 五维评分证据包（词/曲/编/唱/混）
+        "evidence": _build_evidence(
+            bpm_data, key_data, sonara_evidence, spectral, dynamics, stereo,
+            arrangement, duration, bitrate_warning,
+        ),
 
         # 基础元数据
         "bpm": bpm_data.get("bpm"),
@@ -1898,6 +1906,60 @@ def _generate_verification_checklist(anomalies: list, spectral: dict, dynamics: 
         checklist.append(entry)
 
     return checklist
+
+
+def _build_evidence(bpm_data: dict, key_data: dict, sonara: dict, spectral: dict,
+                    dynamics: dict, stereo: dict, arrangement: dict,
+                    duration: float, bitrate_warning: str) -> Dict[str, Any]:
+    """五维评分证据包：只描述事实，不评判好坏（schema 见 runbook/evidence-schema.md）。"""
+    bass = arrangement.get("bass", {}) if isinstance(arrangement, dict) else {}
+    texture_tags = []
+    if isinstance(arrangement, dict):
+        texture_tags = [t.get("label") for t in arrangement.get("texture_tags", []) if t.get("label")]
+    true_peak = dynamics.get("true_peak_dbtp") if isinstance(dynamics, dict) else None
+
+    return {
+        "歌词": {
+            "vocalness": sonara.get("vocalness"),
+            "sections": sonara.get("segments") or [],
+            "lyrics_text": None,
+            "note": "歌词文本在 Step2/Step4 提供；Step1 仅提供人声呈现与结构证据",
+        },
+        "作曲": {
+            "bpm": bpm_data.get("bpm") if isinstance(bpm_data, dict) else None,
+            "key": key_data.get("key_full") if isinstance(key_data, dict) else None,
+            "key_candidates": sonara.get("key_candidates"),
+            "key_ambiguity": key_data.get("key_ambiguity") if isinstance(key_data, dict) else None,
+            "chord_change_rate": sonara.get("chord_change_rate"),
+            "dissonance": sonara.get("dissonance"),
+            "chord_events": sonara.get("chord_events"),
+            "structure_segments": sonara.get("segments") or [],
+        },
+        "编曲": {
+            "texture_tags": texture_tags,
+            "subbass_has": bass.get("has_subbass"),
+            "subbass_type": bass.get("subbass_type"),
+            "energy": sonara.get("energy"),
+            "spectral_centroid_mean": spectral.get("centroid_mean") if isinstance(spectral, dict) else None,
+            "duration_seconds": duration,
+        },
+        "演唱": {
+            "vocalness": sonara.get("vocalness"),
+            "speechiness": None,
+            "note": "未分轨时仅人声占比代理；Demucs 分轨后补充音高稳定度",
+        },
+        "混音": {
+            "integrated_lufs": dynamics.get("integrated_lufs") if isinstance(dynamics, dict) else None,
+            "true_peak_dbtp": true_peak,
+            "lra": dynamics.get("lra") if isinstance(dynamics, dict) else None,
+            "crest_factor": dynamics.get("crest_factor") if isinstance(dynamics, dict) else None,
+            "stereo_width": stereo.get("stereo_width") if isinstance(stereo, dict) else None,
+            "phase_correlation_mean": stereo.get("phase_correlation_mean") if isinstance(stereo, dict) else None,
+            "subbass_stereo_width": stereo.get("subbass_stereo_width") if isinstance(stereo, dict) else None,
+            "bitrate_warning": bitrate_warning,
+            "clipping_risk": bool(true_peak is not None and true_peak > -1.0),
+        },
+    }
 
 
 # ═══════════════════════════════════════════════════

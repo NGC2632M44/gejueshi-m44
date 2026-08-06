@@ -480,7 +480,11 @@ JSON格式:
 // ═══════════════════════════════════════════════════
 // [新增 v3.1] API: 本地素材库 (JSON文件, 简单直接)
 // ═══════════════════════════════════════════════════
-const LIBRARY_PATH = path.join(__dirname, "data", "library.json");
+const LIBRARY_PATH = process.env.GEJUESHI_LIBRARY_PATH || path.join(__dirname, "data", "library.json");
+
+function outputDir() {
+  return process.env.GEJUESHI_OUTPUT_DIR || path.join(__dirname, "output");
+}
 
 function readLibrary() {
   try {
@@ -581,6 +585,11 @@ app.post("/api/library", (req, res) => {
   const lib = readLibrary();
   if (!lib[type]) lib[type] = [];
 
+  // 自动专辑归类（先执行，确保 albumId 写入曲目后再入库）
+  if (type === "tracks" && (data.albumName || data.albumTitle)) {
+    autoOrganizeAlbum(lib, data);
+  }
+
   // 按 id 去重
   const idx = lib[type].findIndex((item) => item.id === data.id);
   if (idx >= 0) {
@@ -589,13 +598,8 @@ app.post("/api/library", (req, res) => {
     lib[type].push({ ...data, id: data.id || `item_${Date.now()}`, createdAt: new Date().toISOString() });
   }
 
-  // ── 自动专辑归类 ──
-  if (type === "tracks" && data.albumTitle) {
-    autoOrganizeAlbum(lib, data);
-  }
-
   writeLibrary(lib);
-  res.json({ success: true, count: lib[type].length, autoOrganized: type === "tracks" && !!data.albumTitle });
+  res.json({ success: true, count: lib[type].length, autoOrganized: type === "tracks" && !!(data.albumName || data.albumTitle) });
 });
 
 /**
@@ -603,7 +607,7 @@ app.post("/api/library", (req, res) => {
  * 目录结构: output/{专辑名}/ (单曲卡片存放)
  */
 function autoOrganizeAlbum(lib, trackData) {
-  const albumTitle = trackData.albumTitle;
+  const albumTitle = trackData.albumName || trackData.albumTitle;
   if (!albumTitle) return;
 
   if (!lib.albums) lib.albums = [];
@@ -618,7 +622,7 @@ function autoOrganizeAlbum(lib, trackData) {
 
   // 自动创建 output 目录
   const safeName = albumTitle.replace(/[\\/:*?"<>|]/g, "_");
-  const albumDir = path.join(__dirname, "output", safeName);
+  const albumDir = path.join(outputDir(), safeName);
   if (!fs.existsSync(albumDir)) {
     fs.mkdirSync(albumDir, { recursive: true });
     console.log(`📁 自动创建专辑目录: output/${safeName}`);
@@ -875,7 +879,7 @@ ${userGroundTruth || "（无）"}
 }`
         }, {
           role: "user",
-          content: `核实以下乐评：\n\n${reviewText}\n\n音频特征：BPM ${audioFeatures?.bpm || "?"}，调性 ${audioFeatures?.key || "?"}，LUFS ${audioFeatures?.dynamics?.integrated_lufs || "?"}，质心 ${audioFeatures?.spectral?.centroid_mean || "?"}Hz`
+          content: `核实以下乐评：\n\n${reviewText}\n\n音频特征：BPM ${audioFeatures?.bpm || "?"}，调性 ${audioFeatures?.key || "?"}，LUFS ${audioFeatures?.dynamics?.integrated_lufs || "?"}，质心 ${audioFeatures?.spectral?.centroid_mean || "?"}Hz\n\n证据包：${JSON.stringify(audioFeatures?.evidence || {})}`
         }],
     }, { apiKey, signal: AbortSignal.timeout(120000) });
 
@@ -956,12 +960,13 @@ app.get("/api/lyrics", async (req, res) => {
 // 导出保存: 接收 base64 PNG，写入 output 目录
 // ═══════════════════════════════════════════════════
 app.post("/api/save-export", (req, res) => {
-  const { data, name, folder } = req.body;
+  const { data, name, folder, contentType } = req.body;
   if (!data || !name) return res.status(400).json({ error: "缺少 data 或 name" });
   try {
-    const base64 = data.replace(/^data:image\/png;base64,/, "");
-    const buf = Buffer.from(base64, "base64");
-    const outDir = path.join(__dirname, "output", folder ? folder.replace(/[\\/:*?"<>|]/g, "_") : "");
+    const buf = contentType === "text/html"
+      ? Buffer.from(data, "utf8")
+      : Buffer.from(data.replace(/^data:image\/png;base64,/, ""), "base64");
+    const outDir = path.join(outputDir(), folder ? folder.replace(/[\\/:*?"<>|]/g, "_") : "");
     if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
     const safeName = name.replace(/[\\/:*?"<>|]/g, "_");
     const filePath = path.join(outDir, safeName);
@@ -1137,14 +1142,14 @@ app.post("/api/settings", (req, res) => {
 // [v3.2] 专辑目录列表 — 自动从 output/ 读取
 // ═══════════════════════════════════════════════════
 app.get("/api/library/album-dirs", (req, res) => {
-  const outputDir = path.join(__dirname, "output");
+  const outDir = outputDir();
   try {
-    const dirs = fs.readdirSync(outputDir, { withFileTypes: true })
+    const dirs = fs.readdirSync(outDir, { withFileTypes: true })
       .filter(d => d.isDirectory() && !d.name.startsWith(".") && d.name !== ".test-run")
       .map(d => ({
         name: d.name,
         path: `output/${d.name}`,
-        fileCount: fs.readdirSync(path.join(outputDir, d.name)).filter(f => f.endsWith(".html")).length,
+        fileCount: fs.readdirSync(path.join(outDir, d.name)).filter(f => /\.(html|png)$/i.test(f)).length,
       }))
       .filter(d => d.fileCount > 0)
       .sort((a, b) => b.fileCount - a.fileCount);

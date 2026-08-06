@@ -310,6 +310,15 @@ export function buildScoringPrompt(audioFeatures, listeningAnswers = "", albumMe
   if (structure.length > 0) {
     prompts.push(`- 段落结构: ${structure.map(s => `${s.label}(${s.start}s-${s.end}s)`).join(" → ")}`);
   }
+
+  // ── Step1 五维证据包（只当证据，不下结论）──
+  const evidence = audioFeatures.evidence;
+  if (evidence && Object.keys(evidence).length > 0) {
+    prompts.push("## Step1 五维证据包（只当证据，不下结论）");
+    prompts.push(JSON.stringify(evidence, null, 2));
+    prompts.push("规则：每个维度的 rationale 必须引用对应证据键（如 [混音:LUFS=-8.9]），或注明“证据不足，基于平台评分/听感推断”。禁止把数值本身说成好/坏结论。");
+    prompts.push("");
+  }
   prompts.push("");
 
   // ── 研究数据（Wikipedia/MusicBrainz 等）──

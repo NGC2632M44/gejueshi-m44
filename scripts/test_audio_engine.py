@@ -88,6 +88,12 @@ def test_cli_camera_bpm_container_warning_and_json_types():
     assert isinstance(has_subbass, bool), f"has_subbass 类型异常: {type(has_subbass)}"
     # 顶层 JSON 不应出现字符串布尔
     assert '"has_subbass": "True"' not in json.dumps(result, ensure_ascii=False)
+    # 五维证据包
+    ev = result["evidence"]
+    assert set(ev) == {"歌词", "作曲", "编曲", "演唱", "混音"}
+    assert 124 <= ev["作曲"]["bpm"] <= 128
+    assert isinstance(ev["混音"]["integrated_lufs"], (int, float))
+    assert isinstance(ev["混音"]["clipping_risk"], bool)
 
 
 @pytest.mark.slow

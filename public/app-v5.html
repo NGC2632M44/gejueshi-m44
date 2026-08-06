@@ -397,6 +397,7 @@ details.manual .tip{font:11px/1.7 var(--f-sans);color:var(--ink-3);margin:10px 0
         <div class="row">
           <div class="field"><label>厂牌</label><input type="text" id="meta-label" placeholder="Domino"></div>
           <div class="field"><label>流派</label><input type="text" id="meta-genre" placeholder="Garage Rock"></div>
+          <div class="field"><label>所属专辑（留空=未分组）</label><input type="text" id="meta-album" placeholder="用于专辑归类与卡片存档" oninput="saveDraft()"></div>
         </div>
         <div class="btn-row">
           <button class="btn" id="btn-score" onclick="runScoring()">生成评分 &amp; 卡片</button>
@@ -1225,6 +1226,16 @@ async function runScoring() {
     });
     const cardHTML = await cardRes.text();
 
+    // 卡片 HTML 落盘到 output/{专辑}/{歌曲}.html
+    const albumName = $("meta-album").value.trim();
+    const saveFolder = albumName || "未分组";
+    const saveName = `${(metadata.artist || "Unknown")}_${(metadata.title || "card").replace(/[\\/:*?"<>|]/g, "_")}.html`;
+    fetch(`${API}/api/save-export`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ data: cardHTML, name: saveName, folder: saveFolder, contentType: "text/html" }),
+    }).catch(() => {});
+
     const blob = new Blob([cardHTML], {type: "text/html;charset=utf-8"});
     const url = URL.createObjectURL(blob);
     $("card-frame").src = url;
@@ -1236,9 +1247,8 @@ async function runScoring() {
     toast("评分卡已生成", "ok");
     markStep(4, "done");
 
-    // 自动存素材库 + 按专辑归类
-    const albumTitle = metadata.title || "";
-    autoSaveToLibrary(finalScores, metadata, correctedAF, albumTitle);
+    // 自动存素材库 + 按所属专辑归类
+    autoSaveToLibrary(finalScores, metadata, correctedAF, albumName);
 
     setTimeout(() => $("card-stage").scrollIntoView({behavior: "smooth", block: "start"}), 300);
   } catch (e) {
@@ -1250,7 +1260,7 @@ async function runScoring() {
 }
 
 // 自动保存到素材库 (按专辑归类)
-async function autoSaveToLibrary(scores, metadata, audioFeatures, albumTitle) {
+async function autoSaveToLibrary(scores, metadata, audioFeatures, albumName) {
   try {
     const trackId = "track_" + Date.now();
     await fetch(`${API}/api/library`, {
@@ -1261,8 +1271,9 @@ async function autoSaveToLibrary(scores, metadata, audioFeatures, albumTitle) {
         data: {
           id: trackId,
           title: metadata.title || audioFeatures?.filename || "Unknown",
+          songTitle: metadata.title || audioFeatures?.filename || "Unknown",
           artist: metadata.artist || "",
-          albumTitle: albumTitle || metadata.title || "",
+          albumName: albumName || "",
           year: metadata.release_date || "",
           label: metadata.label || "",
           genre: (metadata.genres || []).join(", "),
@@ -1273,7 +1284,7 @@ async function autoSaveToLibrary(scores, metadata, audioFeatures, albumTitle) {
         }
       })
     });
-    console.log("📁 已自动存入素材库 → 专辑: " + (albumTitle || metadata.title || "?"));
+    console.log("📁 已自动存入素材库 → 专辑: " + (albumName || "未分组"));
   } catch (e) {
     console.log("素材库自动保存失败:", e.message);
   }
@@ -1381,7 +1392,7 @@ async function loadLibraryTracks() {
     for (const d of albumDirs) dirMap[d.name] = d;
 
     for (const t of libraryTracks) {
-      const albumTitle = t.albumTitle;
+      const albumTitle = t.albumName || t.albumTitle;
       // 匹配 output 目录
       let key = albumTitle;
       let dirInfo = null;
@@ -1469,7 +1480,7 @@ function toggleTrackSelect(trackId) {
   setStatus("album-track-status", `已选 ${selectedAlbumTracks.length} / ${libraryTracks.length} 轨`, "ok");
   if (selectedAlbumTracks.length > 0) {
     $("album-hit-section").style.display = "block";
-    $("album-name-input").placeholder = "专辑名称 (例如: " + (selectedAlbumTracks[0].albumTitle || selectedAlbumTracks[0].title || "") + ")";
+    $("album-name-input").placeholder = "专辑名称 (例如: " + (selectedAlbumTracks[0].albumName || selectedAlbumTracks[0].albumTitle || selectedAlbumTracks[0].title || "") + ")";
   }
   autoFillAlbumMeta();
 }
@@ -1479,7 +1490,7 @@ function autoFillAlbumMeta() {
   // 自动填充专辑元数据
   const first = selectedAlbumTracks[0];
   if (first.artist && !$("meta-artist").value) $("meta-artist").value = first.artist;
-  if (first.albumTitle && !$("album-name-input").value) $("album-name-input").value = first.albumTitle;
+  if ((first.albumName || first.albumTitle) && !$("album-name-input").value) $("album-name-input").value = first.albumName || first.albumTitle;
   if (first.year && !$("meta-year").value) $("meta-year").value = first.year;
   if (first.label && !$("meta-label").value) $("meta-label").value = first.label;
   if (first.genre && !$("meta-genre").value) $("meta-genre").value = first.genre;
@@ -1523,13 +1534,20 @@ async function createAlbumFromSelected() {
         coverUrl: getActiveCoverUrl(),
       })
     });
-    const cardHTML = await cardRes.text();
-
-    if (cardHTML.includes("error")) {
+    if (!cardRes.ok) {
       setStatus("score-status", "✕ 卡片生成失败", "err");
       toast("专辑卡片生成失败", "err");
       return;
     }
+    const cardHTML = await cardRes.text();
+
+    // 专辑卡片 HTML 落盘
+    const albumSaveName = `${albumTitle.replace(/[\\/:*?"<>|]/g, "_")}_album_card.html`;
+    fetch(`${API}/api/save-export`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ data: cardHTML, name: albumSaveName, folder: albumTitle, contentType: "text/html" }),
+    }).catch(() => {});
 
     const blob = new Blob([cardHTML], {type: "text/html;charset=utf-8"});
     const url = URL.createObjectURL(blob);

@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node --test services/test_ai.js",
+    "test": "node --test services/test_ai.js services/test_songbpm_parser.js services/test_scoring_prompt.js services/test_album_flow.js",
     "test:py": "python -m pytest scripts/ -q"
   },
   "keywords": [
