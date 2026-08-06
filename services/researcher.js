@@ -17,7 +17,8 @@ const proxyAgent = new HttpsProxyAgent(PROXY_URL);
 // 需要走代理的域名 (被 GFW 限制)
 const NEEDS_PROXY = ["wikipedia.org", "musicbrainz.org", "duckduckgo.com",
   "rateyourmusic.com", "albumoftheyear.org", "pitchfork.com", "metacritic.com",
-  "apple.com", "discogs.com", "last.fm", "ws.audioscrobbler.com"];
+  "apple.com", "discogs.com", "last.fm", "ws.audioscrobbler.com",
+  "googleapis.com", "genius.com"];
 
 function needsProxy(url) {
   try { return NEEDS_PROXY.some(d => new URL(url).hostname.includes(d)); }
@@ -272,12 +273,156 @@ async function fetchLastfm(query,key) {
 }
 
 async function fetchDiscogsAPI(query,token) {
-  if(!token)return null;
+  // Discogs Personal Access Token（Settings → Developers → Generate token）
+  // 消费者 Consumer Key 不是 PAT，直接当 token 用会返回 401。
+  if(!token || token.length < 30)return null;
   const res=await fetch(`https://api.discogs.com/database/search?q=${encodeURIComponent(query)}&type=release&per_page=10`,{headers:{"User-Agent":MB_UA,"Authorization":`Discogs token=${token}`},signal:AbortSignal.timeout(T)});
   if(!res.ok)throw new Error(`Discogs API ${res.status}`);
   const data=await res.json();
   const results=(data.results||[]).map(r=>({title:r.title,year:r.year,format:r.format?.join(", "),label:r.label?.[0],genre:r.genre?.[0],style:r.style?.[0],country:r.country,coverImage:r.cover_image,url:r.uri?`https://www.discogs.com${r.uri}`:null})).filter(r=>r.url);
   return{results,count:results.length,source:"Discogs API"};
+}
+
+/**
+ * Genius 歌曲搜索（免费 Token，走代理）
+ * 返回歌曲页 + 页浏览量，用于 Step2 展示与卡片佐料。
+ */
+export async function fetchGeniusSong(query, token) {
+  if (!token) return null;
+  try {
+    const res = await proxyFetch(`https://api.genius.com/search?q=${encodeURIComponent(query)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(T),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const hit = data?.response?.hits?.[0]?.result;
+    if (!hit) return null;
+    return {
+      title: hit.title || null,
+      artist: hit.primary_artist?.name || null,
+      url: hit.url || null,
+      id: hit.id || null,
+      pageviews: hit.stats?.pageviews ?? null,
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * YouTube 官方视频搜索 + 播放统计（YouTube Data API v3，走代理）
+ * 优先 Official Visualiser / Official Audio / Lyrics，排除 Remix/Live/Cover。
+ */
+export async function fetchYouTubeStats(query, apiKey) {
+  if (!apiKey) return null;
+  try {
+    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=5&q=${encodeURIComponent(query)}&key=${apiKey}`;
+    const res = await proxyFetch(searchUrl, { signal: AbortSignal.timeout(T) });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const items = data?.items || [];
+    if (!items.length) return null;
+
+    const ids = items.map((i) => i.id?.videoId).filter(Boolean).slice(0, 5);
+    if (!ids.length) return null;
+
+    const statsRes = await proxyFetch(
+      `https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${ids.join(",")}&key=${apiKey}`,
+      { signal: AbortSignal.timeout(T) }
+    );
+    if (!statsRes.ok) return null;
+    const statsData = await statsRes.json();
+    const statsMap = new Map(
+      (statsData?.items || []).map((x) => [x.id, x.statistics || {}])
+    );
+    const toNum = (v) => (v != null && v !== "" ? Number(v) : null);
+
+    const ranked = items.map((item) => {
+      const title = item.snippet?.title || "";
+      let score = 0;
+      if (/official|visuali[sz]er|\baudio\b|lyric/i.test(title)) score += 30;
+      if (/remix|live|cover|acoustic|reaction|interview/i.test(title)) score -= 20;
+      const views = toNum(statsMap.get(item.id?.videoId)?.viewCount) || 0;
+      if (views >= 100000) score += 20;
+      else if (views >= 10000) score += 10;
+      return { item, score, views };
+    }).sort((a, b) => b.score - a.score || b.views - a.views);
+
+    const top = ranked[0]?.item;
+    const videoId = top?.id?.videoId;
+    if (!videoId) return null;
+    const stat = statsMap.get(videoId) || {};
+    return {
+      title: top.snippet?.title || null,
+      channel: top.snippet?.channelTitle || null,
+      videoId,
+      url: `https://www.youtube.com/watch?v=${videoId}`,
+      views: toNum(stat.viewCount),
+      likes: toNum(stat.likeCount),
+      comments: toNum(stat.commentCount),
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * Last.fm 单曲热度（track.search + track.getinfo）
+ * 返回听众/播放量/时长，用于 Step2 热度与卡片佐料。
+ */
+export async function fetchLastfmTrack(query, apiKey) {
+  if (!apiKey) return null;
+  try {
+    const qWords = query.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+    const searchRes = await proxyFetch(
+      `https://ws.audioscrobbler.com/2.0/?method=track.search&track=${encodeURIComponent(query)}&api_key=${apiKey}&format=json&limit=5`,
+      { signal: AbortSignal.timeout(T) }
+    );
+    if (!searchRes.ok) return null;
+    const searchData = await searchRes.json();
+    const matches = searchData?.results?.trackmatches?.track || [];
+    if (!matches.length) return null;
+
+    const ranked = matches.map((m) => {
+      const title = (m.name || "").toLowerCase();
+      const artist = (m.artist || "").toLowerCase();
+      let score = 0;
+      if (qWords.length && qWords.every((w) => title.includes(w) || artist.includes(w))) score += 40;
+      if (qWords.some((w) => title.includes(w))) score += 15;
+      if (qWords.some((w) => artist.includes(w))) score += 15;
+      score += Math.min(parseInt(m.listeners || 0) / 10000, 10);
+      return { m, score };
+    }).sort((a, b) => b.score - a.score);
+
+    const best = ranked[0]?.m;
+    if (!best) return null;
+
+    const infoRes = await proxyFetch(
+      `https://ws.audioscrobbler.com/2.0/?method=track.getinfo&artist=${encodeURIComponent(best.artist)}&track=${encodeURIComponent(best.name)}&api_key=${apiKey}&format=json`,
+      { signal: AbortSignal.timeout(T) }
+    );
+    if (!infoRes.ok) return null;
+    const info = (await infoRes.json())?.track || null;
+    if (!info) {
+      return {
+        name: best.name, artist: best.artist, url: best.url,
+        listeners: parseInt(best.listeners || 0) || null,
+        searchOnly: true,
+      };
+    }
+    return {
+      name: info.name,
+      artist: info.artist?.name,
+      url: info.url,
+      listeners: info.listeners ? parseInt(info.listeners) : null,
+      playcount: info.playcount ? parseInt(info.playcount) : null,
+      duration: info.duration ? parseInt(info.duration) : null,
+      album: info.album?.title || null,
+    };
+  } catch (_) {
+    return null;
+  }
 }
 
 // ══════════════════════════════════════════════
@@ -417,9 +562,19 @@ function buildAggregate(r) {
   a.tracks=iMB?(mb?.tracks?.length?mb.tracks:it?.tracks):(it?.tracks?.length?it.tracks:mb?.tracks);
   a.tracks=a.tracks?.length?a.tracks:null;a.trackCount=a.tracks?.length||mb?.trackCount||it?.trackCount||null;
   // 封面优先级：MusicBrainz release-group 主封面（最接近“最流行版本”）> iTunes > Discogs > Last.fm > Wikipedia
-  a.artwork=mb?.artwork||it?.artwork||dg?.results?.[0]?.coverImage||lf?.image||wp?.thumbnail||null;
+  a.artwork=it?.artwork||lf?.image||mb?.artwork||dg?.results?.[0]?.coverImage||wp?.thumbnail||null;
   if (it?.candidates?.length) {
     a.albumCandidates = it.candidates.map((c) => ({ source: "iTunes", ...c }));
+  }
+  if (lf?.image) {
+    a.albumCandidates = a.albumCandidates || [];
+    a.albumCandidates.push({
+      source: "Last.fm",
+      title: lf.title,
+      artist: lf.artist,
+      artwork: lf.image,
+      url: lf.url || null,
+    });
   }
   a.summary=wp?.extract||lf?.summary||null;
   if(rc?.text)a.reception={text:rc.text};
@@ -600,22 +755,37 @@ export async function getNeteaseDetail(id, type = "song") {
   try {
     if (type === "album") {
       // 专辑动态数据 (含评论数/收藏数/分享数)
-      const dynUrl = `https://music.163.com/api/album/detail/dynamic?id=${id}`;
-      const dynRes = await fetch(dynUrl, {
-        headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://music.163.com" },
-        signal: AbortSignal.timeout(8000),
-      });
-      if (dynRes.ok) {
-        const dyn = await dynRes.json();
-        if (dyn.code === 200) {
-          return {
-            commentCount: dyn.commentCount || 0,
-            shareCount: dyn.shareCount || 0,
-            subCount: dyn.subCount || 0,
-            isSub: dyn.isSub || false,
-          };
+      try {
+        const dynUrl = `https://music.163.com/api/album/detail/dynamic?id=${id}`;
+        const dynRes = await fetch(dynUrl, {
+          headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://music.163.com" },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (dynRes.ok) {
+          const dyn = await dynRes.json();
+          if (dyn.code === 200) {
+            return {
+              commentCount: dyn.commentCount || 0,
+              shareCount: dyn.shareCount || 0,
+              subCount: dyn.subCount || 0,
+              isSub: dyn.isSub || false,
+            };
+          }
         }
-      }
+      } catch (_) {}
+      try {
+        const cmtUrl = `https://music.163.com/api/v1/resource/comments/R_AL_3_${id}?limit=1`;
+        const cmtRes = await fetch(cmtUrl, {
+          headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://music.163.com" },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (cmtRes.ok) {
+          const cmt = await cmtRes.json();
+          if (cmt.code === 200) {
+            return { commentCount: cmt.total || 0, shareCount: null, subCount: null, isSub: false };
+          }
+        }
+      } catch (_) {}
     } else {
       // 歌曲评论数 — 使用公开的评论接口 (无需加密)
       const commentUrl = `https://music.163.com/api/v1/resource/comments/R_SO_4_${id}?limit=1`;
@@ -719,57 +889,6 @@ export async function getQQAlbumTracks(albumMid) {
     }));
   } catch (e) {
     return [];
-  }
-}
-
-/**
- * 获取 QQ 音乐歌曲评论数
- */
-/**
- * 获取 QQ 音乐歌曲评论数（需登录 cookie）
- *
- * 如何获取 cookie:
- *   浏览器打开 y.qq.com → 登录 → F12 → Application → Cookies
- *   → 复制整个 cookie 字符串
- *   然后: export QQ_MUSIC_COOKIE="uin=xxx; skey=xxx; ..."
- *   或写到 ~/.claude/settings.json 的 env 里
- */
-export async function getQQMusicComments(mid) {
-  if (!mid) return null;
-  const cookie = process.env.QQ_MUSIC_COOKIE || "";
-
-  // 计算 g_tk (QQ音乐鉴权token, 基于skey的hash)
-  let gtk = "";
-  if (cookie) {
-    const skeyMatch = cookie.match(/skey=([^;]+)/);
-    if (skeyMatch) {
-      let hash = 5381;
-      for (let i = 0; i < skeyMatch[1].length; i++) {
-        hash += (hash << 5) + skeyMatch[1].charCodeAt(i);
-      }
-      gtk = String(hash & 0x7fffffff);
-    }
-  }
-
-  const params = new URLSearchParams({
-    biztype: "1", topid: mid, cmd: "8",
-    pagenum: "0", pagesize: "1", format: "json",
-  });
-  if (gtk) {
-    params.set("g_tk", gtk);
-    params.set("loginUin", "0");
-  }
-
-  const url = `https://c.y.qq.com/base/fcgi-bin/fcg_global_comment_h5.fcg?${params}`;
-  try {
-    const headers = { "User-Agent": "Mozilla/5.0", "Referer": "https://y.qq.com" };
-    if (cookie) headers["Cookie"] = cookie;
-    const res = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data?.comment?.commenttotal || data?.commenttotal || 0;
-  } catch (e) {
-    return null;
   }
 }
 

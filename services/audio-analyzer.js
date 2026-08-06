@@ -621,8 +621,6 @@ export function calcHeatScore(heat) {
   const qqComments = pick("qq_music_comments");
   const rymCount = pick("rym_rating_count");
   const listeners = pick("lastfm_listeners");
-  const spotify = pick("spotify_popularity");
-  const apple = pick("applemusic_rating");
   const youtube = pick("youtube_views");
   const discogs = pick("discogs_have") + pick("discogs_want");
 
@@ -635,8 +633,6 @@ export function calcHeatScore(heat) {
   if (qqComments) contributors.push(`QQ评论 ${formatNumber(qqComments)}`);
   if (rymCount) contributors.push(`RYM ${formatNumber(rymCount)}人`);
   if (listeners) contributors.push(`Last.fm ${formatNumber(listeners)}听众`);
-  if (spotify) contributors.push(`Spotify ${spotify}/100`);
-  if (apple) contributors.push(`Apple ${apple}/100`);
   if (youtube) contributors.push(`YouTube ${formatNumber(youtube)}`);
   if (discogs) contributors.push(`Discogs ${formatNumber(discogs)}`);
 
@@ -645,7 +641,7 @@ export function calcHeatScore(heat) {
   // 主指标：网易云（评论 + 收藏×0.5 + 单曲评论×2）
   const main = neAlbumComments + neAlbumCollections * 0.5 + neSongComments * 2 + neSongAlbumComments + neSongAlbumCollections * 0.5;
   // 辅助指标：其他平台等效值
-  const aux = Math.max(qqComments, rymCount * 3, listeners / 10, spotify * 30, apple * 30, youtube / 1000, discogs * 5);
+  const aux = Math.max(qqComments, rymCount * 3, listeners / 10, youtube / 1000, discogs * 5);
 
   let stars;
   if (main >= 100000 || aux >= 100000) stars = 5;

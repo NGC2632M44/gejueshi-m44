@@ -10,10 +10,12 @@
 //   2. ≥2 个结果一致 (BPM误差≤2, 调名一致) → 候选值
 //   3. 外部多数派可覆盖本地算法结果
 
-import { smartFetch } from "./proxy-fetch.js";
+import { smartFetch, proxiedFetch } from "./proxy-fetch.js";
 //   4. 缓存: 同一查询 1 小时内不重复请求
 
 import { crossReference, assessKeyReliability } from "./audio-analyzer.js";
+
+const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
 
 // ── 简单内存缓存 (避免频繁请求三方 API) ──
 const CACHE_TTL = 3600000; // 1 小时
@@ -264,7 +266,51 @@ export async function querySongBPMByUrl(songbpmUrl) {
 }
 
 // 旧版 search-based 函数保留为空 (API 已死)
-async function querySongBPM(query) { return null; }
+/**
+ * SongBPM 官方 API 搜索（需要 api_key，走代理 + UA/Referer 绕过 Cloudflare）
+ * 返回: tempo / key_of / uri / artist。按艺人名过滤同名歌曲。
+ */
+async function querySongBPMAPI(query, apiKey, songTitle, artistName) {
+  if (!apiKey) return null;
+  const parsed = _parseTrackQuery(query);
+  const title = songTitle || parsed?.title || query;
+  const artist = artistName || parsed?.artist || null;
+  try {
+    const url = `https://api.getsongbpm.com/search/?api_key=${encodeURIComponent(apiKey)}&type=song&lookup=${encodeURIComponent(title)}`;
+    const res = await proxiedFetch(url, {
+      headers: { "User-Agent": UA, "Referer": "https://getsongbpm.com/" },
+      signal: AbortSignal.timeout(12000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const results = Array.isArray(data.search) ? data.search : [];
+    if (!results.length) return null;
+
+    const artistWords = [...new Set((artist || query || "").toLowerCase().split(/\s+/).filter((w) => w.length > 2))];
+    const hit = results.find((r) => {
+      const a = (r.artist?.name || "").toLowerCase();
+      return artistWords.length === 0 || artistWords.some((w) => a.includes(w));
+    }) || (artist ? null : results[0]);
+    if (!hit) return null;
+
+    const rawKey = (hit.key_of || "").replace(/♯/g, "#").replace(/♭/g, "b");
+    return {
+      source: "songbpm",
+      bpm: hit.tempo ? Math.round(parseFloat(hit.tempo) * 10) / 10 : null,
+      key: _normalizeExternalKey(rawKey),
+      url: hit.uri || null,
+      track_name: hit.title || null,
+      artist_name: hit.artist?.name || null,
+    };
+  } catch (e) {
+    console.log(`   ♪ SongBPM API: ${e.message}`);
+    return null;
+  }
+}
+
+async function querySongBPM(query, apiKey, songTitle, artistName) {
+  return querySongBPMAPI(query, apiKey, songTitle, artistName);
+}
 
 /**
  * MusicBrainz 录音查找 (录音 MBID/时长)
@@ -291,7 +337,7 @@ async function queryMusicBrainz(query) {
  * @param {Object} localResult - Python 本地分析结果
  * @returns {Object} 交叉验证报告
  */
-export async function mirCrossReference(query, localResult) {
+export async function mirCrossReference(query, localResult, opts = {}) {
   // 缓存检查
   const cached = _cacheGet(query);
   if (cached) {
@@ -304,10 +350,10 @@ export async function mirCrossReference(query, localResult) {
   const external = [];
 
   // ── 并行查询所有源 ──
-  const [hooktheory, spotify, songbpm, mb] = await Promise.allSettled([
+  const songbpmApiKey = opts.getsongbpmApiKey || process.env.GETSONGBPM_API_KEY || "";
+  const [hooktheory, songbpm, mb] = await Promise.allSettled([
     queryHookTheory(query),
-    querySpotify(query),
-    querySongBPM(query),
+    querySongBPM(query, songbpmApiKey, opts.songTitle, opts.artistName),
     queryMusicBrainz(query),
   ]);
 
@@ -320,19 +366,23 @@ export async function mirCrossReference(query, localResult) {
   }
 
   // Spotify
-  if (spotify.value) {
-    sources.push({ name: "spotify", status: "ok" });
-    external.push(spotify.value);
-  } else {
-    sources.push({ name: "spotify", status: spotify.reason ? "error" : "no_config" });
-  }
+  sources.push({ name: "spotify", status: "retired", note: "requires Premium" });
 
   // SongBPM — API 404 + 页面结构变更，暂时下线
-  sources.push({ name: "songbpm", status: "retired" });
+  if (songbpm.value) {
+    sources.push({ name: "songbpm", status: "ok" });
+    external.push(songbpm.value);
+  } else if (!songbpmApiKey) {
+    sources.push({ name: "songbpm", status: "no_config" });
+  } else if (songbpm.reason) {
+    sources.push({ name: "songbpm", status: "error" });
+  } else {
+    sources.push({ name: "songbpm", status: "no_data" });
+  }
 
   // AcousticBrainz — 服务已下线 (HTTP 000)，暂时跳过
   sources.push({ name: "acousticbrainz", status: "retired" });
-  sources.push({ name: "musicbrainz", status: mb.value ? "found" : "no_match" });
+  sources.push({ name: "musicbrainz", status: mb.value ? "found" : (mb.reason ? "error" : "no_match") });
 
   // ── 交叉验证 ──
   const localData = {

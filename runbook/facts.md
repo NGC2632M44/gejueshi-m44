@@ -1,6 +1,6 @@
 # 已核验事实清单
 
-更新时间：2026-08-06（Phase 0）
+更新时间：2026-08-06（Phase 9）
 
 | # | 事实 | 状态 | 验证方式 |
 |---|---|---|---|
@@ -29,14 +29,24 @@
 | F23 | 网易云专辑搜索标题排名修复：Louder, Please（评论413/收藏9995）优先于 Deluxe 版 | verified | 实跑 /api/research/chinese |
 | F24 | MusicBrainz release-group 封面 + /api/proxy-image 双通道（直连→代理） | verified | 实跑：archive.org 封面 200 |
 | F25 | 版本升至 3.5.0（package.json / Python / 横幅同步） | verified | 代码核查 |
+| F26 | Last.fm 正确 Key（00683e…）可用：album.getinfo Louder, Please 听众 159,578；track.getinfo Wet & Wild 听众 98,333 / 播放 1,084,760 / 182s | verified | 本机实跑 |
+| F27 | getsongbpm 官方 API：search type=song lookup="Wet & Wild" 返回 4 首同名歌（tempo/key_of/artist），需按艺人过滤；Rose Gray 曲目未入库 | verified | 本机实跑 |
+| F28 | Spotify /v1/search 2026-08-06 实测 403 “Active premium subscription required” | verified | 本机实跑 |
+| F29 | Discogs Consumer Key 当 token 用返回 401；需 Personal Access Token | verified | 本机实跑 |
+| F30 | YouTube Data API：搜索 + statistics 走代理可用（Official Visualiser 354,477 播放） | verified | 本机实跑 |
+| F31 | Genius API：search 走代理可用（Wet & Wild id 10900767） | verified | 本机实跑 |
+| F32 | LRCLIB：无需 Key，plainLyrics + syncedLyrics 均返回 | verified | 本机实跑 |
+| F33 | 网易云 Louder, Please 专辑：commentCount 413 / subCount 9997；单曲 Wet & Wild 316 评论 | verified | 实跑 /api/research/chinese |
+| F34 | 版本升至 3.6.0（package.json 唯一来源） | verified | 代码核查 |
 
 ## 未验证 / 待用户提供
 
-- U1 getsongbpm API 字段与数据质量（需注册 API Key）
-- U2 Genius API（需 Token）
+- U1 ~~getsongbpm API~~ → 已解决（F27）
+- U2 ~~Genius API~~ → 已解决（F31）
 - U3 代理 127.0.0.1:1001 下的 Wikipedia/MusicBrainz/ADM（需代理在线）
 - U4 Demucs 分轨（未安装；默认 out_of_scope）
-- U5 Spotify 接入（需 2024-11-27 前创建且未被限制的 App；默认 out_of_scope）
+- U5 Spotify 接入（需 Premium；当前 retired）
+- U6 Discogs Personal Access Token（当前只有 Consumer Key）
 
 ## 关键结论
 

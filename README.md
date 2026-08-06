@@ -1,7 +1,7 @@
 # 歌掘士 M44 — 音乐五维分析工作台
 
 单曲/专辑音乐分析工作台：输入音频 → 客观音频分析（BPM/调性/频谱/响度/编曲纹理）
-→ 外部数据研究（Wikipedia / MusicBrainz / iTunes / AnyDecentMusic / 网易云 / QQ 音乐）
+→ 外部数据研究（Wikipedia / MusicBrainz / iTunes / Last.fm / Genius / YouTube / 网易云音乐）
 → 五维评分（词 / 曲 / 编 / 唱 / 混）→ 生成可视化评分卡。
 
 ## 技术栈
@@ -29,8 +29,30 @@ npm test
 python -m pytest scripts/ -q
 ```
 
-## 数据来源与致谢
+## 外部 API 配置
 
-BPM / Key 交叉验证数据部分来自 [GetSongBPM.com](https://getsongbpm.com)；
+密钥统一放在 `data/api-keys.json`（已 gitignore，不会提交），或使用同名环境变量。
+参考 `.env.example`。以下是当前接入的数据源与状态：
+
+| 数据源 | 用途 | 状态 |
+| --- | --- | --- |
+| [GetSongBPM.com](https://getsongbpm.com/api) | BPM / 调性交叉验证 | 免费 API Key，已接入 |
+| [Last.fm](https://www.last.fm/api/account/create) | 专辑/单曲听众、播放量、封面 | 免费 API Key，已接入 |
+| [Genius](https://genius.com/api-clients) | 歌曲页、页浏览量 | 免费 Access Token，已接入 |
+| [YouTube Data API v3](https://console.cloud.google.com/apis) | 官方视频播放量/点赞/评论 | 免费 API Key，已接入 |
+| [LRCLIB](https://lrclib.net) | 歌词（LRC 格式） | 无需 Key，已接入 |
+| [lyricsfile](https://github.com/tranxuanthang/lyricsfile) | 歌词格式参考 | 已接入（LRCLIB 返回 LRC） |
+| [MusicBrainz](https://musicbrainz.org/doc/MusicBrainz_API) | 专辑/曲目/厂牌/评分 | 无需 Key |
+| [Cover Art Archive](https://coverartarchive.org) | 封面回退 | 无需 Key |
+| [iTunes Search API](https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/index.html) | 封面/曲目/发行日期 | 无需 Key |
+| [Wikipedia API](https://www.mediawiki.org/wiki/API:Main_page) | 专辑摘要/乐评/人员/榜单 | 无需 Key |
+| [网易云音乐](https://music.163.com) | 专辑/单曲评论与收藏 | 无需 Key |
+| [Discogs](https://www.discogs.com/developers) | 实体发行版评分/厂牌/封面 | 需要 Personal Access Token（等待配置） |
+| [Spotify](https://developer.spotify.com/dashboard) | ~~搜索/封面/热度~~ | 2026 起新 App 需 Premium（已实测 403），默认停用 |
+
 音频特征计算参考 ITU-R BS.1770-4、EBU R128、Lerch (2012) 与 Katz (2015)。
-其余数据来源：Wikipedia、MusicBrainz、iTunes、AnyDecentMusic、网易云音乐、QQ 音乐。
+
+## 回链
+
+本工具在界面与卡片中引用以上公开数据源时均保留来源链接；API 使用遵循各平台服务条款。
+此仓库同时作为 GetSongBPM / Last.fm / Genius / Discogs / YouTube Data API 申请页的回链地址。

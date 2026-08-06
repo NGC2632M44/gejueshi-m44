@@ -1,5 +1,32 @@
 # Changelog
 
+## [3.6.0] - 2026-08-06
+
+### Added
+- 接入已验证的免费 API：Last.fm（专辑/单曲听众+播放量）、Genius（歌曲页+页浏览）、
+  YouTube Data API（官方视频播放/点赞/评论）、SongBPM 官方 API（BPM/Key 自动交叉）、
+  LRCLIB（歌词，LRC 格式，与 lyricsfile 兼容）
+- Step1 新增“联网检索·歌曲名/艺人/专辑”三个输入框：选音频后自动按 `艺人 - 歌名`
+  解析，可手动修正；名称同步用于 Step2 搜索与 Step4 默认填写
+- Step2 手动乐评字段：Pitchfork / Metacritic / NME / The Guardian / Clash / Dork（带官网链接）
+- 网易云主专辑封面优先：不再被 MusicBrainz 的 Bonus/Deluxe 封面顶掉；iTunes/Last.fm 参与候选
+- /api/status 返回各数据源配置状态；/api/research/chinese 返回 youtube/lastfmTrack/genius
+
+### Fixed
+- 密钥映射修正：Last.fm / Discogs / Genius 的 Key 之前串位，现按你提供的最新值接入
+- QQ 音乐评论不再出现在自动搜索（无公开接口）；Spotify/Apple 不再参与热度（用户端无收藏/评论数据）
+- 封面优先级：iTunes > Last.fm > MusicBrainz > Discogs > Wikipedia，前端再以网易云主专辑兜底
+- 网易云专辑评论/收藏字段确认正确（Louder, Please = 413 评论 / 9997 收藏），旧进程需重启
+- Discogs：Consumer Key 不是 Personal Access Token，未配置有效 PAT 前不再发请求（避免 401 噪音）
+- Spotify：搜索接口实测 403（要求 Premium），MIR 面板标记 retired，不再浪费请求
+
+### Changed
+- 歌词接口：LRCLIB 优先、网易云兜底
+- MIR 面板：SongBPM 状态区分 ok / no_config / error / no_data；Spotify 显示 retired
+- 热度模型：自动来源 = 网易云（专辑+单曲评论/收藏）、Last.fm 听众、YouTube 播放；
+  QQ/Spotify/Apple 仅保留手动字段
+- 版本统一为 3.6.0
+
 ## [3.5.0] - 2026-08-06
 
 ### Fixed

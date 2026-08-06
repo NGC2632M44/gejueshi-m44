@@ -5,11 +5,12 @@ import cors from "cors";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import { researchAlbum, searchNetease, getNeteaseDetail, getNeteaseAlbumComments, searchQQMusic, searchQQAlbum, getQQAlbumTracks, getQQMusicComments } from "./services/researcher.js";
+import { researchAlbum, searchNetease, getNeteaseDetail, fetchGeniusSong, fetchYouTubeStats, fetchLastfmTrack } from "./services/researcher.js";
 import { fullAnalysis, generateListeningGuide, buildScoringPrompt, extractPlatformRatings, calcHeatScore, crossReference, reverseKeyFromTab, assessKeyReliability, buildAlbumCardData } from "./services/audio-analyzer.js";
 import { mirCrossReference } from "./services/mir-cross-ref.js";
 import { callAI, getEffectiveSettings, maskApiKey, readSettings, writeSettings } from "./services/ai.js";
 import { proxiedFetch, smartFetch } from "./services/proxy-fetch.js";
+import { getKeys } from "./services/keys.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -154,9 +155,10 @@ app.get("/api/research", async (req, res) => {
 
   console.log(`\n🔍 研究专辑: "${q}"`);
   const start = Date.now();
+  const keys = getKeys();
   const data = await researchAlbum(q, {
-    lastfmKey: req.headers["x-lastfm-key"] || process.env.LASTFM_API_KEY,
-    discogsToken: req.headers["x-discogs-token"] || process.env.DISCOGS_TOKEN,
+    lastfmKey: req.headers["x-lastfm-key"] || keys.lastfmApiKey,
+    discogsToken: req.headers["x-discogs-token"] || keys.discogsToken,
   });
   console.log(`✅ 研究完成 (${Date.now() - start}ms)`);
   res.json(data);
@@ -506,6 +508,7 @@ function writeLibrary(data) {
 app.get("/api/research/chinese", async (req, res) => {
   const q = (req.query.q || "").trim();
   if (!q) return res.status(400).json({ error: "请输入歌曲名+艺术家" });
+  const songQ = (req.query.song || "").trim() || q;
 
   console.log(`\n🇨🇳 中国平台搜索: "${q}"`);
   const start = Date.now();
@@ -519,7 +522,7 @@ app.get("/api/research/chinese", async (req, res) => {
         const d = await getNeteaseDetail(al.id, "album");
         return {
           id: al.id, name: al.name, artist: al.artist,
-          picUrl: al.picUrl || null,
+          picUrl: al.picUrl ? (al.picUrl.includes("?") ? al.picUrl : al.picUrl + "?param=800y800") : null,
           commentCount: d?.commentCount ?? null,
           subCount: d?.subCount ?? null,
           shareCount: d?.shareCount ?? null,
@@ -549,26 +552,26 @@ app.get("/api/research/chinese", async (req, res) => {
       };
     }
 
-    // QQ 音乐单曲评论（接口失败返回 null，不伪装成 0）
-    let qq = null;
-    const qqSearch = await searchQQMusic(q);
-    if (qqSearch?.results?.length) {
-      const topQ = qqSearch.results[0];
-      const comments = await getQQMusicComments(topQ.mid);
-      qq = {
-        id: topQ.id, mid: topQ.mid, name: topQ.name,
-        artists: topQ.artists, album: topQ.album,
-        commentCount: comments ?? null,
-      };
-    }
+    // 已验证的免费源：YouTube 播放量 / Last.fm 单曲热度 / Genius 歌曲页
+    const keys = getKeys();
+    const [youtube, lastfmTrack, genius] = await Promise.allSettled([
+      fetchYouTubeStats(songQ, keys.youtubeApiKey),
+      fetchLastfmTrack(songQ, keys.lastfmApiKey),
+      fetchGeniusSong(songQ, keys.geniusToken),
+    ]);
+    const youtubeData = youtube.status === "fulfilled" ? youtube.value : null;
+    const lastfmTrackData = lastfmTrack.status === "fulfilled" ? lastfmTrack.value : null;
+    const geniusData = genius.status === "fulfilled" ? genius.value : null;
 
-    console.log(`✅ 中国平台搜索完成 (${Date.now() - start}ms) | 网易云专辑:${neteaseAlbum ? "OK" : "N/A"} 单曲:${neteaseSong ? "OK" : "N/A"} QQ:${qq ? "OK" : "N/A"}`);
+    console.log(`✅ 中国平台搜索完成 (${Date.now() - start}ms) | 网易云专辑:${neteaseAlbum ? "OK" : "N/A"} 单曲:${neteaseSong ? "OK" : "N/A"} YouTube:${youtubeData ? "OK" : "N/A"} Last.fm:${lastfmTrackData ? "OK" : "N/A"} Genius:${geniusData ? "OK" : "N/A"}`);
     res.json({
       success: true,
       netease: neteaseAlbum,
       neteaseAlbum,
       neteaseSong,
-      qq,
+      youtube: youtubeData,
+      lastfmTrack: lastfmTrackData,
+      genius: geniusData,
       elapsed_ms: Date.now() - start,
     });
   } catch (err) {
@@ -669,12 +672,18 @@ app.get("/api/status", (req, res) => {
   const lib = readLibrary();
   const settings = getEffectiveSettings();
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf-8"));
+  const keys = getKeys();
   res.json({
     version: pkg.version,
     deepseekKey: !!settings.apiKey,
     model: settings.model,
-    lastfmKey: !!process.env.LASTFM_API_KEY,
-    discogsToken: !!process.env.DISCOGS_TOKEN,
+    lastfmKey: !!keys.lastfmApiKey,
+    discogsToken: !!keys.discogsToken,
+    getsongbpmKey: !!keys.getsongbpmApiKey,
+    geniusToken: !!keys.geniusToken,
+    youtubeKey: !!keys.youtubeApiKey,
+    spotifyConfigured: !!(keys.spotifyClientId && keys.spotifyClientSecret),
+    spotifyStatus: "retired_requires_premium",
     nodeVersion: process.version,
     pythonAvailable: false, // 由前端探测
     library: {
@@ -684,6 +693,7 @@ app.get("/api/status", (req, res) => {
     },
     sources: [
       "Wikipedia", "MusicBrainz", "iTunes", "Last.fm", "Discogs API",
+      "YouTube Data API", "Genius API", "SongBPM API", "LRCLIB",
       "RYM (via DDG)", "AOTY (via DDG)",
       "—— v3.2 新增 ——",
       "标准化音频分析 (44100Hz/2048FFT/50%overlap/95%rolloff/EBU R128)",
@@ -943,7 +953,30 @@ app.get("/api/lyrics", async (req, res) => {
       return res.json({ success: false, lyrics: null, hint: "未找到歌曲" });
     }
     const song = songSearch.results[0];
-    // 用 researcher.js 已有的代理 fetch 模式
+    // LRCLIB 开放歌词库（无 Key），返回 LRC 纯文本，与 lyricsfile 格式兼容
+    try {
+      const firstArtist = (song.artists || "").split("/")[0] || "";
+      const lrclibRes = await fetch(
+        `https://lrclib.net/api/search?track_name=${encodeURIComponent(song.name)}&artist_name=${encodeURIComponent(firstArtist)}`,
+        {
+          headers: { "User-Agent": "Gejueshi-M44/3.6 (+https://github.com/NGC2632M44/gejueshi-m44)" },
+          signal: AbortSignal.timeout(10000),
+        }
+      );
+      if (lrclibRes.ok) {
+        const lrclibData = await lrclibRes.json();
+        const match = (Array.isArray(lrclibData) ? lrclibData : []).find((x) => !x.instrumental && x.plainLyrics) || null;
+        if (match?.plainLyrics) {
+          return res.json({
+            success: true,
+            lyrics: match.plainLyrics.trim(),
+            source: "LRCLIB",
+            song: { id: song.id, name: match.trackName || song.name, artists: match.artistName || song.artists },
+          });
+        }
+      }
+    } catch (_) {}
+    // 回退：网易云歌词
     const { default: fetchWithProxy } = await import("node-fetch");
     const { HttpsProxyAgent } = await import("https-proxy-agent");
     const agent = new HttpsProxyAgent(process.env.GEJUESHI_PROXY_URL || "http://127.0.0.1:1001");
@@ -961,6 +994,7 @@ app.get("/api/lyrics", async (req, res) => {
     res.json({
       success: true,
       lyrics: lyrics || null,
+      source: "NetEase",
       song: { id: song.id, name: song.name, artists: song.artists },
     });
   } catch (e) {
@@ -996,14 +1030,19 @@ app.post("/api/save-export", (req, res) => {
 // 需要: SPOTIFY_CLIENT_ID + SPOTIFY_CLIENT_SECRET (可选)
 // ═══════════════════════════════════════════════════
 app.post("/api/mir-cross-ref", async (req, res) => {
-  const { query, localResult } = req.body;
+  const { query, localResult, songTitle, artistName } = req.body;
   if (!query) return res.status(400).json({ error: "请提供歌曲搜索词 query (歌曲名+艺术家)" });
 
   console.log(`\n🔬 MIR交叉验证: "${query}"`);
   const start = Date.now();
 
   try {
-    const result = await mirCrossReference(query, localResult || {});
+    const keys = getKeys();
+    const result = await mirCrossReference(query, localResult || {}, {
+      getsongbpmApiKey: keys.getsongbpmApiKey,
+      songTitle,
+      artistName,
+    });
     console.log(`✅ MIR验证完成 (${Date.now() - start}ms) | 源: ${result.sources.filter(s => s.status === "ok").map(s => s.name).join(", ") || "全失败"} | 共识: ${result.crossReference.consensus}`);
     res.json(result);
   } catch (e) {

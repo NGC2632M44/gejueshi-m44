@@ -248,6 +248,11 @@ details.manual .tip{font:11px/1.7 var(--f-sans);color:var(--ink-3);margin:10px 0
           <label>或手动输入路径</label>
           <input type="text" id="audio-path" placeholder="audio/filename.mp3">
         </div>
+        <div class="row" style="margin-top:8px">
+          <div class="field"><label>联网检索·歌曲名</label><input type="text" id="online-song" placeholder="Wet &amp; Wild" oninput="saveDraft();syncResearchQuery()"></div>
+          <div class="field"><label>联网检索·艺人</label><input type="text" id="online-artist" placeholder="Rose Gray" oninput="saveDraft();syncResearchQuery()"></div>
+          <div class="field"><label>联网检索·专辑</label><input type="text" id="online-album" placeholder="Louder, Please" oninput="saveDraft();syncResearchQuery()"></div>
+        </div>
         <div class="btn-row">
           <button class="btn" id="btn-analyze" onclick="runAnalysis()">分析音频</button>
           <span class="inline-status" id="analyze-status"></span>
@@ -310,7 +315,7 @@ details.manual .tip{font:11px/1.7 var(--f-sans);color:var(--ink-3);margin:10px 0
 
     <!-- Step 2 -->
     <section class="panel" id="step2">
-      <div class="panel-head"><span class="no">STEP 02</span><h2>数据研究 · 校准锚点</h2><span class="hint">Wikipedia / MusicBrainz / 网易云 / QQ</span></div>
+      <div class="panel-head"><span class="no">STEP 02</span><h2>数据研究 · 校准锚点</h2><span class="hint">Wikipedia / MusicBrainz / 网易云 / Last.fm / YouTube / Genius</span></div>
       <div class="panel-body">
         <div class="field">
           <label>搜索 — 专辑名 + 艺术家</label>
@@ -346,6 +351,16 @@ details.manual .tip{font:11px/1.7 var(--f-sans);color:var(--ink-3);margin:10px 0
               <div class="field"><label>AOTY 用户 /100 <a href="#" onclick="openPlatformSearch('https://www.albumoftheyear.org/search.php?q=')">↗</a></label><input type="text" id="plat-aoty" placeholder="85"></div>
               <div class="field"><label>AOTY 乐评 /100</label><input type="text" id="plat-aoty-critic" placeholder="76"></div>
               <div class="field"><label>Discogs 评分 /5 <a href="#" onclick="openPlatformSearch('https://www.discogs.com/search/?q=')">↗</a></label><input type="text" id="plat-discogs" placeholder="4.2"></div>
+            </div>
+            <div class="row">
+              <div class="field"><label>Pitchfork /10 <a href="#" onclick="openPlatformSearch('https://pitchfork.com/search/?query=')">↗</a></label><input type="text" id="plat-p4k" placeholder="7.5"></div>
+              <div class="field"><label>Metacritic /100 <a href="#" onclick="openPlatformSearch('https://www.metacritic.com/search/all/')">↗</a></label><input type="text" id="plat-mc" placeholder="75"></div>
+              <div class="field"><label>NME /10 <a href="#" onclick="openPlatformSearch('https://www.nme.com/search?q=')">↗</a></label><input type="text" id="plat-nme" placeholder="8"></div>
+            </div>
+            <div class="row">
+              <div class="field"><label>The Guardian /5 <a href="#" onclick="openPlatformSearch('https://www.theguardian.com/music')">↗</a></label><input type="text" id="plat-guardian" placeholder="4"></div>
+              <div class="field"><label>Clash /10 <a href="#" onclick="openPlatformSearch('https://www.clashmusic.com/?s=')">↗</a></label><input type="text" id="plat-clash" placeholder="8"></div>
+              <div class="field"><label>Dork /5 <a href="#" onclick="openPlatformSearch('https://readdork.com/?s=')">↗</a></label><input type="text" id="plat-dork" placeholder="4"></div>
             </div>
             <div class="row">
               <div class="field"><label>QQ音乐 评分 /10 <a href="#" onclick="openPlatformSearch('https://y.qq.com/n/ryqq/search?w=')">↗</a></label><input type="text" id="plat-qq" placeholder="8.5"></div>
@@ -480,8 +495,10 @@ const DRAFT_KEY = "m44-draft-v5";
 // ============ 草稿自动保存 / 恢复 ============
 const DRAFT_FIELDS = [
   "audio-path", "research-query",
+  "online-song", "online-artist", "online-album",
   "plat-rym", "plat-rym-count", "plat-rym-genres",
   "plat-aoty", "plat-aoty-critic", "plat-discogs",
+  "plat-p4k", "plat-mc", "plat-nme", "plat-guardian", "plat-clash", "plat-dork",
   "plat-qq", "plat-qq-comments",
   "plat-spotify", "plat-apple", "plat-youtube",
   "note-arrangement", "note-performance", "note-production",
@@ -688,11 +705,18 @@ async function runAnalysis() {
     guide.style.display = "block";
     guide.innerHTML = renderGuide(data.listeningGuide || "");
 
-    if (!$("research-query").value.trim()) {
+    if (!$("online-song").value.trim() && !$("online-artist").value.trim()) {
       const fn = af.file || "";
       const name = fn.replace(/\.[^.]+$/, "").replace(/[-_]/g, " ").replace(/YouTube/ig, "").trim();
-      if (name) $("research-query").value = name;
+      const parts = name.split(/\s+-\s+/);
+      if (parts.length >= 2) {
+        $("online-artist").value = parts[0].trim();
+        $("online-song").value = parts.slice(1).join(" - ").trim();
+      } else if (name) {
+        $("online-song").value = name;
+      }
     }
+    syncResearchQuery();
 
     setStatus("analyze-status", "✓ 分析完成", "ok");
     toast("音频分析完成", "ok");
@@ -710,7 +734,12 @@ async function runAnalysis() {
         const mirRes = await fetch(`${API}/api/mir-cross-ref`, {
           method: "POST",
           headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({ query: mirQuery, localResult: af })
+          body: JSON.stringify({
+            query: mirQuery,
+            localResult: af,
+            songTitle: $("online-song").value.trim() || undefined,
+            artistName: $("online-artist").value.trim() || undefined,
+          })
         });
         const mirData = await mirRes.json();
         if (mirData.success && mirData.recommended) {
@@ -893,7 +922,7 @@ async function verifySongBPMUrl() {
     const mirData = {
       sources: [
         { name: "hooktheory", status: "no_data" },
-        { name: "spotify", status: "no_config" },
+        { name: "spotify", status: "retired" },
         { name: "songbpm", status: "ok" },
         { name: "acousticbrainz", status: "retired" },
         { name: "musicbrainz", status: "found" },
@@ -1002,6 +1031,11 @@ async function runResearch() {
       if (rs.metacritic) { strip.innerHTML += badge("Metacritic", rs.metacritic.score, rs.metacritic.max, true); platformRatings.metacritic = rs.metacritic; }
       if (rs.allmusic) strip.innerHTML += badge("AllMusic", rs.allmusic.score, rs.allmusic.max);
       if (rs.nme) strip.innerHTML += badge("NME", rs.nme.score, rs.nme.max);
+      if (rs.guardian) strip.innerHTML += badge("The Guardian", rs.guardian.score, rs.guardian.max);
+      if (rs.clash) strip.innerHTML += badge("Clash", rs.clash.score, rs.clash.max);
+      if (rs.dork) strip.innerHTML += badge("Dork", rs.dork.score, rs.dork.max);
+      if (rs.mojo) strip.innerHTML += badge("Mojo", rs.mojo.score, rs.mojo.max);
+      if (rs.anydecentmusic) strip.innerHTML += badge("ADM", rs.anydecentmusic.score, rs.anydecentmusic.max);
     }
     if (agg.tags && agg.tags.length)
       strip.innerHTML += `<div class="badge"><div class="s" style="font-size:12px">${escapeHTML(agg.tags.slice(0,3).join(" / "))}</div><div class="k">流派</div></div>`;
@@ -1026,14 +1060,15 @@ async function runResearch() {
     const n = Object.keys(platformRatings).length;
     setStatus("research-status", n ? `✓ 提取到 ${n} 个平台评分` : "已获取元数据（未找到平台评分）", "ok");
 
-    // 中文平台
-    busy("research-status", "查询网易云 / QQ音乐…");
+    // 中文平台 + 已验证的免费 API
+    busy("research-status", "查询网易云 / YouTube / Last.fm / Genius…");
     try {
-      const cnRes = await fetch(`${API}/api/research/chinese?q=${encodeURIComponent(query)}`);
+      const cnQ = [$("online-song").value.trim(), $("online-artist").value.trim()].filter(Boolean).join(" ") || query;
+      const cnRes = await fetch(`${API}/api/research/chinese?q=${encodeURIComponent(query)}&song=${encodeURIComponent(cnQ)}`);
       const cn = await cnRes.json();
-      // 网易云：专辑与单曲数据分开，缺失即不计入（不当作 0）
       const neAlbum = cn.netease;
       const neSong = cn.neteaseSong;
+
       if (neAlbum && neAlbum.commentCount != null) {
         window._heatData.netease_album_comments = neAlbum.commentCount;
         strip.innerHTML += badge("网易云专辑评论", neAlbum.commentCount.toLocaleString(), "条");
@@ -1048,10 +1083,34 @@ async function runResearch() {
       }
       if (neSong && neSong.albumCommentCount != null) window._heatData.netease_song_album_comments = neSong.albumCommentCount;
       if (neSong && neSong.albumSubCount != null) window._heatData.netease_song_album_collections = neSong.albumSubCount;
-      if (cn.qq && cn.qq.commentCount != null) {
-        window._heatData.qq_music_comments = cn.qq.commentCount;
-        strip.innerHTML += badge("QQ评论", cn.qq.commentCount.toLocaleString(), "条");
+
+      // Last.fm 单曲听众 / 播放量（已验证 Key）
+      if (cn.lastfmTrack && cn.lastfmTrack.listeners != null) {
+        window._heatData.lastfm_listeners = cn.lastfmTrack.listeners;
+        strip.innerHTML += badge("Last.fm 听众", cn.lastfmTrack.listeners.toLocaleString(), "人");
+        if (cn.lastfmTrack.playcount != null) {
+          window._heatData.lastfm_playcount = cn.lastfmTrack.playcount;
+        }
       }
+
+      // YouTube 官方视频播放量（自动，可手动修正）
+      if (cn.youtube && cn.youtube.views != null) {
+        window._heatData.youtube_views = cn.youtube.views;
+        strip.innerHTML += badge("YouTube 播放", cn.youtube.views.toLocaleString(), "次");
+        if (!$("plat-youtube").value) $("plat-youtube").value = cn.youtube.views;
+      }
+
+      // Genius 歌词页（卡片佐料，不参与热度）
+      if (cn.genius && cn.genius.url) {
+        strip.innerHTML += `<div class="badge"><div class="s" style="font-size:11px">↗</div><div class="k"><a href="${escapeHTML(cn.genius.url)}" target="_blank" style="color:inherit">Genius</a></div></div>`;
+      }
+
+      // 自动补全 Step4：单曲名/艺人优先，专辑名取主专辑（与 Step2 搜索联动）
+      if (neSong && neSong.name && !$("meta-title").value) $("meta-title").value = neSong.name;
+      if (neSong && neSong.artists && !$("meta-artist").value) $("meta-artist").value = neSong.artists;
+      if (neAlbum && neAlbum.name && !$("meta-album").value) $("meta-album").value = neAlbum.name;
+      if (neAlbum && neAlbum.artist && !$("meta-artist").value) $("meta-artist").value = neAlbum.artist;
+
       // 封面候选（网易云主专辑 + 候选）
       if (neAlbum && neAlbum.candidates) {
         window._albumCandidates = (window._albumCandidates || []).concat(
@@ -1059,14 +1118,13 @@ async function runResearch() {
         );
       }
       renderCoverCandidates();
-      // 用网易云主专辑封面补充自动封面（仅当 MusicBrainz/iTunes 都没有时）
-      if (!window._originalCoverUrl || !agg.artwork) {
-        const cnArtwork = (neAlbum && neAlbum.picUrl) || null;
-        if (cnArtwork) {
-          window._originalCoverUrl = cnArtwork;
-          updateCoverDisplay(cnArtwork, agg);
-          console.log("🖼️ 封面来自网易云主专辑");
-        }
+
+      // 主封面优先取网易云主专辑（避免 MusicBrainz 选到 Bonus/Deluxe 版封面）
+      const cnArtwork = (neAlbum && neAlbum.picUrl) || null;
+      if (cnArtwork) {
+        window._originalCoverUrl = cnArtwork;
+        updateCoverDisplay(cnArtwork, { ...agg, title: neAlbum.name || agg.title, artist: neAlbum.artist || agg.artist, labels: agg.labels || [] });
+        console.log("🖼️ 封面来自网易云主专辑");
       }
     } catch (e) { console.log("Chinese platform fetch failed:", e.message); }
 
@@ -1244,6 +1302,12 @@ async function runScoring() {
   const aotyVal = parseFloat($("plat-aoty").value);
   const aotyCritic = parseFloat($("plat-aoty-critic").value);
   const discogsVal = parseFloat($("plat-discogs").value);
+  const p4kVal = parseFloat($("plat-p4k").value);
+  const mcVal = parseFloat($("plat-mc").value);
+  const nmeVal = parseFloat($("plat-nme").value);
+  const guardianVal = parseFloat($("plat-guardian").value);
+  const clashVal = parseFloat($("plat-clash").value);
+  const dorkVal = parseFloat($("plat-dork").value);
   const qqVal = parseFloat($("plat-qq").value);
   const qqComments = parseInt($("plat-qq-comments").value) || null;
   const spotifyVal = parseInt($("plat-spotify").value) || null;
@@ -1254,9 +1318,15 @@ async function runScoring() {
   if (aotyVal) pr.aoty = {score: aotyVal, max: 100};
   if (aotyCritic) pr.aoty_critic = {score: aotyCritic, max: 100};
   if (discogsVal) pr.discogs = {score: discogsVal, max: 5};
+  if (p4kVal) pr.pitchfork = {score: p4kVal, max: 10};
+  if (mcVal) pr.metacritic = {score: mcVal, max: 100};
+  if (nmeVal) pr.nme = {score: nmeVal, max: 10};
+  if (guardianVal) pr.guardian = {score: guardianVal, max: 5};
+  if (clashVal) pr.clash = {score: clashVal, max: 10};
+  if (dorkVal) pr.dork = {score: dorkVal, max: 5};
   if (qqVal) pr.qq = {score: qqVal, max: 10};
-  if (spotifyVal != null) { pr.spotify = {score: spotifyVal, max: 100}; window._heatData.spotify_popularity = spotifyVal; }
-  if (appleVal != null) { pr.apple = {score: appleVal, max: 100}; window._heatData.applemusic_rating = appleVal; }
+  if (spotifyVal != null) pr.spotify = {score: spotifyVal, max: 100};
+  if (appleVal != null) pr.apple = {score: appleVal, max: 100};
   if (youtubeVal != null) { pr.youtube = {score: youtubeVal}; window._heatData.youtube_views = youtubeVal; }
 
   if (qqComments) window._heatData.qq_music_comments = qqComments;
@@ -1461,11 +1531,28 @@ function onAudioSelect() {
   const v = $("audio-select").value;
   if (v) {
     $("audio-path").value = v;
-    // 文件名不规范时自动给出联网检索名（可手动改，Step4 默认沿用）
-    if (!$("research-query").value.trim()) {
-      $("research-query").value = guessSearchQueryFromFilename(v.split("/").pop());
+    const fn = v.split("/").pop().replace(/\.[^.]+$/, "");
+    const parts = fn.split(/\s+-\s+/);
+    if (parts.length >= 2) {
+      $("online-artist").value = parts[0].trim();
+      $("online-song").value = parts.slice(1).join(" - ").trim();
+    } else {
+      $("online-song").value = guessSearchQueryFromFilename(fn);
     }
+    syncResearchQuery();
   }
+}
+
+function syncResearchQuery() {
+  const song = $("online-song").value.trim();
+  const artist = $("online-artist").value.trim();
+  const album = $("online-album").value.trim();
+  const q = [song, artist].filter(Boolean).join(" ") || album;
+  if (q && !$("research-query").value.trim()) $("research-query").value = q;
+  if (song && !$("meta-title").value) $("meta-title").value = song;
+  if (artist && !$("meta-artist").value) $("meta-artist").value = artist;
+  if (album && !$("meta-album").value) $("meta-album").value = album;
+  saveDraft();
 }
 
 // ============ Album Mode ============
