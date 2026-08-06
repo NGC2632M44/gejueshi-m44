@@ -1,5 +1,5 @@
 // 歌掘士 v3.3 — 外部 MIR 数据库交叉查询服务
-// 数据源: Hooktheory / Spotify Audio Features / SongBPM / AcousticBrainz (via MusicBrainz)
+// 数据源: Hooktheory / Spotify Audio Features / SongBPM / MusicBrainz
 //
 // Spotify 接入:
 //   设置环境变量 SPOTIFY_CLIENT_ID + SPOTIFY_CLIENT_SECRET
@@ -265,38 +265,12 @@ async function querySongBPMByUrl(songbpmUrl) {
 async function querySongBPM(query) { return null; }
 
 /**
- * AcousticBrainz (via MusicBrainz recording ID)
- * 需要先通过 MusicBrainz 查到 recording ID
- */
-async function queryAcousticBrainz(mbid) {
-  if (!mbid) return null;
-  try {
-    const { HttpsProxyAgent } = await import("https-proxy-agent");
-    const agent = new HttpsProxyAgent("http://127.0.0.1:1001");
-    const url = `https://acousticbrainz.org/api/v1/${mbid}/low-level`;
-    const res = await fetch(url, { agent, signal: AbortSignal.timeout(5000) });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const key = data.tonal?.key_key;
-    const scale = data.tonal?.key_scale;
-    return {
-      source: "acousticbrainz",
-      bpm: data.rhythm?.bpm ? Math.round(data.rhythm.bpm) : null,
-      key: key ? `${key} ${scale || "major"}` : null,
-      key_confidence: data.tonal?.key_strength ? Math.round(data.tonal.key_strength * 100) : null,
-    };
-  } catch (e) {
-    return null;
-  }
-}
-
-/**
- * MusicBrainz 录音查找 (获取 MBID 用于 AcousticBrainz)
+ * MusicBrainz 录音查找 (录音 MBID/时长)
  */
 async function queryMusicBrainz(query) {
   try {
     const { HttpsProxyAgent } = await import("https-proxy-agent");
-    const agent = new HttpsProxyAgent("http://127.0.0.1:1001");
+    const agent = new HttpsProxyAgent(process.env.GEJUESHI_PROXY_URL || "http://127.0.0.1:1001");
     const url = `https://musicbrainz.org/ws/2/recording/?query=${encodeURIComponent(query)}&fmt=json&limit=2`;
     const res = await fetch(url, {
       headers: { "User-Agent": "Gejueshi/3.2 (MIR Cross-Ref; +http://localhost:3001)" },

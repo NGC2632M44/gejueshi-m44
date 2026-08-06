@@ -10,7 +10,7 @@ const T = 20000;
 const MB_UA = "Gejueshi/1.0 (Music Research; +http://localhost:3001)";
 
 // Windows 系统代理 — WestWorldVPN
-const PROXY_URL = "http://127.0.0.1:1001";
+const PROXY_URL = process.env.GEJUESHI_PROXY_URL || "http://127.0.0.1:1001";
 const proxyAgent = new HttpsProxyAgent(PROXY_URL);
 
 // 需要走代理的域名 (被 GFW 限制)
@@ -72,75 +72,6 @@ export async function researchAlbum(query, opts = {}) {
   // 写入缓存
   RESEARCH_CACHE.set(ck, { data: { ...r }, ts: Date.now() });
   return r;
-}
-
-// ══════════════════════════════════════════════
-//  搜索引擎层 — DuckDuckGo HTML 搜索（无反爬）
-// ══════════════════════════════════════════════
-
-async function searchDDG(query) {
-  // DDG 已不可用 (202 redirect / timeout) — 返回空结果
-  return "";
-}
-
-// _searchDDG_retired — DDG HTML 搜索已不可用，保留函数定义供参考
-
-// RYM: 从 DDG 搜索结果提取评分
-function parseRYM(html) {
-  if (!html || html.length < 200) return null;
-  // DDG 搜索结果摘要里会显示 RYM 评分
-  const rating = parseFloat(html.match(/([\d.]+)\s*\/\s*5\s*(?:from|by|rating|★)/i)?.[1]
-    || html.match(/(?:rating|score|★)[:\s]*([\d.]+)\s*\/?\s*5/i)?.[1]
-    || html.match(/[^d.]([\d]\.[\d])\s*(?:out of|over|\/)\s*5/i)?.[1]) || null;
-  // 提取链接
-  const links = extractDDGLinks(html, /rateyourmusic\.com/);
-  return { rating, results: links.slice(0,5), source:"RateYourMusic (via DDG)" };
-}
-
-// AOTY: 从 DDG 搜索结果提取
-function parseAOTY(html) {
-  if (!html || html.length < 200) return null;
-  const score = parseInt(html.match(/(\d{2,3})\s*\/\s*100/i)?.[1]) || null;
-  const links = extractDDGLinks(html, /albumoftheyear\.org/);
-  return { score, results: links.slice(0,5), source:"AlbumOfTheYear (via DDG)" };
-}
-
-// Discogs: 从 DDG 搜索结果提取
-function parseDiscogs(html) {
-  if (!html || html.length < 200) return null;
-  const year = html.match(/(?:19|20)\d{2}/)?.[0] || null;
-  const format = html.match(/(?:Format|Format:)\s*([^<]+)/i)?.[1]?.trim() || null;
-  const links = extractDDGLinks(html, /discogs\.com\/(release|master)/);
-  return { year, format, results: links.slice(0,5), source:"Discogs (via DDG)" };
-}
-
-// DDG HTML 结果链接提取
-function extractDDGLinks(html, pattern) {
-  const links = []; const seen = new Set();
-  const regex = /<a[^>]+class=["']result__a["'][^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-  let m; while ((m = regex.exec(html)) !== null) {
-    let url = m[1]; const text = m[2].replace(/<[^>]*>/g,"").trim();
-    if (url.startsWith("//")) url = "https:" + url;
-    if (!url.startsWith("http")) continue;
-    if (!pattern.test(url)) continue;
-    if (seen.has(url)) continue; seen.add(url);
-    const decoded = decodeURL(url);
-    if (decoded && pattern.test(decoded) && !seen.has(decoded)) {
-      seen.add(decoded);
-      links.push({ title: text, url: decoded });
-    }
-  }
-  return links;
-}
-
-function decodeURL(url) {
-  try {
-    // DDG 用 uddg= 或 rutrd 重定向
-    const u = new URL(url);
-    const redirect = u.searchParams.get("uddg") || u.searchParams.get("ru") || u.searchParams.get("url");
-    if (redirect) return decodeURIComponent(redirect);
-    return url;
-  } catch { return url; }
 }
 
 // ══════════════════════════════════════════════

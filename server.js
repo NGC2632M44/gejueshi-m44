@@ -6,7 +6,6 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import { researchAlbum, searchNetease, getNeteaseDetail, getNeteaseAlbumComments, searchQQMusic, searchQQAlbum, getQQAlbumTracks, getQQMusicComments } from "./services/researcher.js";
-import { generatePodcastScript } from "./services/script-generator.js";
 import { fullAnalysis, generateListeningGuide, buildScoringPrompt, extractPlatformRatings, calcHeatScore, crossReference, reverseKeyFromTab, assessKeyReliability, buildAlbumCardData } from "./services/audio-analyzer.js";
 import { mirCrossReference } from "./services/mir-cross-ref.js";
 import { callAI, getEffectiveSettings, maskApiKey, readSettings, writeSettings } from "./services/ai.js";
@@ -160,23 +159,6 @@ app.get("/api/research", async (req, res) => {
   });
   console.log(`✅ 研究完成 (${Date.now() - start}ms)`);
   res.json(data);
-});
-
-// ============================================================
-// [保留] API: 生成播客稿件
-// ============================================================
-app.post("/api/generate", async (req, res) => {
-  const { researchData, options = {} } = req.body;
-  if (!researchData) return res.status(400).json({ error: "请先完成专辑研究" });
-
-  console.log(`\n🎙️ 生成播客稿件: "${researchData.query}"`);
-  const start = Date.now();
-  const result = await generatePodcastScript(researchData, {
-    ...options,
-    apiKey: req.headers["x-api-key"] || process.env.ANTHROPIC_API_KEY,
-  });
-  console.log(`✅ 稿件生成 ${result.success ? "成功" : "失败"} (${Date.now() - start}ms)`);
-  res.json(result);
 });
 
 // ═══════════════════════════════════════════════════
@@ -398,7 +380,7 @@ app.post("/api/card/v4", async (req, res) => {
   if (cardData.coverUrl && /^https?:\/\//.test(cardData.coverUrl)) {
     try {
       const { HttpsProxyAgent } = await import("https-proxy-agent");
-      const agent = new HttpsProxyAgent("http://127.0.0.1:1001");
+      const agent = new HttpsProxyAgent(process.env.GEJUESHI_PROXY_URL || "http://127.0.0.1:1001");
       const imgRes = await fetch(cardData.coverUrl, {
         signal: AbortSignal.timeout(6000),
         headers: { "User-Agent": "Mozilla/5.0" },
@@ -666,44 +648,6 @@ function autoOrganizeAlbum(lib, trackData) {
   trackData.albumId = albumId;
 }
 
-// ═══════════════════════════════════════════════════
-// [新增 v3.1] API: 发布记录
-// ═══════════════════════════════════════════════════
-app.post("/api/publish", (req, res) => {
-  const { platform, contentId, albumId, url, notes } = req.body;
-  if (!platform || !contentId) {
-    return res.status(400).json({ error: "请提供 platform 和 contentId" });
-  }
-
-  const lib = readLibrary();
-  lib.publishLog.push({
-    id: `pub_${Date.now()}`,
-    platform,
-    contentId,
-    albumId: albumId || null,
-    url: url || "",
-    notes: notes || "",
-    publishedAt: new Date().toISOString(),
-    stats: { views: null, likes: null, comments: null, collects: null },
-  });
-
-  writeLibrary(lib);
-  res.json({ success: true, total: lib.publishLog.length });
-});
-
-app.get("/api/publish/stats", (req, res) => {
-  const lib = readLibrary();
-  const byPlatform = {};
-  for (const pub of lib.publishLog) {
-    byPlatform[pub.platform] = (byPlatform[pub.platform] || 0) + 1;
-  }
-  res.json({
-    totalPublished: lib.publishLog.length,
-    byPlatform,
-    recent: lib.publishLog.slice(-10).reverse(),
-  });
-});
-
 // ============================================================
 // [保留] API: 系统状态
 // ============================================================
@@ -769,7 +713,7 @@ app.get("/api/song-lookup", async (req, res) => {
   if (!q) return res.status(400).json({ error: "请输入歌曲名+艺术家" });
   try {
     const { HttpsProxyAgent } = await import("https-proxy-agent");
-    const agent = new HttpsProxyAgent("http://127.0.0.1:1001");
+    const agent = new HttpsProxyAgent(process.env.GEJUESHI_PROXY_URL || "http://127.0.0.1:1001");
     const mbUrl = `https://musicbrainz.org/ws/2/recording/?query=${encodeURIComponent(q)}&fmt=json&limit=3`;
     const mbRes = await fetch(mbUrl, {
       headers: { "User-Agent": "Gejueshi/1.0 (Music Research; +http://localhost:3001)" },
@@ -784,33 +728,11 @@ app.get("/api/song-lookup", async (req, res) => {
     }));
     if (!recordings.length) return res.json({ success: false, hint: "MusicBrainz 中未找到" });
 
-    let acoustic = null;
-    const bestId = recordings[0].id;
-    try {
-      const abUrl = `https://acousticbrainz.org/api/v1/${bestId}/low-level`;
-      const abRes = await fetch(abUrl, { agent, signal: AbortSignal.timeout(5000) });
-      if (abRes.ok) {
-        const ab = await abRes.json();
-        acoustic = {
-          bpm: ab.rhythm?.bpm ? Math.round(ab.rhythm.bpm) : null,
-          key: ab.tonal?.key_key || null,
-          scale: ab.tonal?.key_scale || null,
-        };
-      }
-    } catch (e) { /* 可能超时 */ }
-
     res.json({
       success: true,
       query: q,
       recordings,
-      acoustic,
-      // 交叉验证兼容格式
-      crossRef: acoustic ? [{
-        source: "acousticbrainz",
-        bpm: acoustic.bpm,
-        key: acoustic.key ? `${acoustic.key} ${acoustic.scale || "major"}` : null,
-      }] : [],
-      _note: "集成 MusicBrainz 录音元数据 + AcousticBrainz 音频特征，用于多源交叉验证",
+      _note: "MusicBrainz 录音元数据（AcousticBrainz 已下线，不再调用）",
     });
   } catch (e) {
     res.json({ success: false, error: e.message });
@@ -831,11 +753,11 @@ app.get("/api/mir-lookup", async (req, res) => {
   console.log(`\n🎵 MIR查询: "${q}"`);
   const start = Date.now();
 
-  // 先试 MusicBrainz + AcousticBrainz
+  // 先试 MusicBrainz
   let mbResult = null;
   try {
     const { HttpsProxyAgent } = await import("https-proxy-agent");
-    const agent = new HttpsProxyAgent("http://127.0.0.1:1001");
+    const agent = new HttpsProxyAgent(process.env.GEJUESHI_PROXY_URL || "http://127.0.0.1:1001");
     const mbUrl = `https://musicbrainz.org/ws/2/recording/?query=${encodeURIComponent(q)}&fmt=json&limit=2`;
     const mbRes = await fetch(mbUrl, {
       headers: { "User-Agent": "Gejueshi/3.2 (Music Research; +http://localhost:3001)" },
@@ -846,37 +768,9 @@ app.get("/api/mir-lookup", async (req, res) => {
       const rec = mbData.recordings?.[0];
       if (rec) {
         mbResult = { id: rec.id, title: rec.title, duration_ms: rec.length };
-        // 尝试 AcousticBrainz
-        try {
-          const abUrl = `https://acousticbrainz.org/api/v1/${rec.id}/low-level`;
-          const abRes = await fetch(abUrl, { agent, signal: AbortSignal.timeout(5000) });
-          if (abRes.ok) {
-            const ab = await abRes.json();
-            mbResult.acoustic = {
-              bpm: ab.rhythm?.bpm ? Math.round(ab.rhythm.bpm) : null,
-              key: ab.tonal?.key_key ? `${ab.tonal.key_key} ${ab.tonal.key_scale || "major"}` : null,
-              key_confidence: ab.tonal?.key_strength ? Math.round(ab.tonal.key_strength * 100) : null,
-            };
-          }
-        } catch (_) {}
       }
     }
   } catch (_) {}
-
-  // 如果有 AcousticBrainz 数据，直接返回
-  if (mbResult?.acoustic?.bpm || mbResult?.acoustic?.key) {
-    const a = mbResult.acoustic;
-    console.log(`✅ MIR查询完成 (${Date.now() - start}ms) | BPM=${a.bpm} Key=${a.key} (AcousticBrainz)`);
-    return res.json({
-      success: true,
-      sources: ["acousticbrainz"],
-      bpm: a.bpm,
-      key: a.key,
-      key_confidence: a.key_confidence,
-      method: "AcousticBrainz low-level (Essentia-based)",
-      elapsed_ms: Date.now() - start,
-    });
-  }
 
   // 否则用 AI 补充 (从训练数据中提取已知歌曲信息)
   try {
@@ -1036,7 +930,7 @@ app.get("/api/lyrics", async (req, res) => {
     // 用 researcher.js 已有的代理 fetch 模式
     const { default: fetchWithProxy } = await import("node-fetch");
     const { HttpsProxyAgent } = await import("https-proxy-agent");
-    const agent = new HttpsProxyAgent("http://127.0.0.1:1001");
+    const agent = new HttpsProxyAgent(process.env.GEJUESHI_PROXY_URL || "http://127.0.0.1:1001");
     const lrcUrl = `https://music.163.com/api/song/lyric?id=${song.id}&lv=1`;
     const lrcRes = await fetchWithProxy(lrcUrl, {
       headers: { "User-Agent": "Mozilla/5.0", Referer: "https://music.163.com" },
@@ -1329,9 +1223,8 @@ app.listen(PORT, () => {
   console.log("  ╠══════════════════════════════════════════════╣");
   console.log(`  ║  http://localhost:${PORT}                     ║`);
   console.log("  ╠══════════════════════════════════════════════╣");
-  console.log("  ║  [v2保留] /api/research  /api/generate       ║");
   console.log("  ║  [v3新增] /api/analyze   /api/card/v3        ║");
-  console.log("  ║  [v3新增] /api/library   /api/publish        ║");
+  console.log("  ║  [v3新增] /api/library   /api/album/card     ║");
   console.log("  ╠══════════════════════════════════════════════╣");
   console.log("  ║  📊 Essentia/Librosa → 客观音频特征          ║");
   console.log("  ║  🎯 听歌指引 → 用户感知 → AI 五维评分       ║");
