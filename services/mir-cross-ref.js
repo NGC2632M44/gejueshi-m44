@@ -215,6 +215,34 @@ async function querySpotify(query) {
 }
 
 /**
+ * SongBPM 页面解析（2026-08 实测页面结构）。
+ * BPM 在 "128 <span>BPM</span>"；Key 字母在 Key <dd>；调式在正文
+ * "key and a <span>minor</span> mode" 中。
+ * 注意：songbpm 搜索页 URL 带随机后缀，无法可靠自动定位，仅支持已知 URL。
+ */
+export function parseSongBPMHtml(html) {
+  const bpmMatch = html.match(/>\s*(\d+(?:\.\d+)?)\s*<span[^>]*>\s*BPM\s*</i)
+    || html.match(/Tempo \(BPM\)\s*<\/dt>\s*<dd[^>]*>\s*(\d+(?:\.\d+)?)\s*<\/dd>/i);
+  const keyMatch = html.match(/Key\s*<\/dt>\s*<dd[^>]*>\s*([A-G][#b]?)\s*<\/dd>/i);
+  const modeMatch = html.match(/key and a\s*<span[^>]*>\s*(major|minor)\s*<\/span>\s*mode/i);
+
+  const bpm = bpmMatch ? parseFloat(bpmMatch[1]) : null;
+  let key = null;
+  if (keyMatch) {
+    const letter = keyMatch[1];
+    const mode = (modeMatch?.[1] || "").toLowerCase();
+    key = mode ? `${letter} ${mode}` : letter;
+  }
+
+  return {
+    source: "songbpm",
+    bpm: bpm && !Number.isNaN(bpm) ? Math.round(bpm * 10) / 10 : null,
+    key: _normalizeExternalKey(key),
+  };
+}
+
+
+/**
  * SongBPM 直接页面抓取 (需要完整 URL，如 https://songbpm.com/@rose-gray/wet-wild-njwcb)
  * API 搜索已死 (404) + POST 搜索被 CSRF 保护 (403)，只能通过已知 URL 直接访问
  */
@@ -226,23 +254,7 @@ async function querySongBPMByUrl(songbpmUrl) {
     });
     if (!res.ok) return null;
     const html = await res.text();
-
-    // 提取 BPM
-    const bpmMatch = html.match(/>(\d+\.?\d*)\s*<\/span>\s*<span[^>]*>\s*BPM\s*</i);
-    const bpmFallback = html.match(/BPM[^<]*<[^>]*>(\d+\.?\d*)</i);
-
-    // 提取 Key
-    const keyMatch = html.match(/Key[^<]*<[^>]*>([A-G][#b]?\s*(?:Major|Minor))</i);
-    const keyFallback = html.match(/>([A-G][#b]?)\s*<\/span>\s*<span[^>]*>\s*Key\s*</i);
-
-    const bpm = bpmMatch ? parseFloat(bpmMatch[1]) : (bpmFallback ? parseFloat(bpmFallback[1]) : null);
-
-    return {
-      source: "songbpm",
-      bpm: bpm && !isNaN(bpm) ? Math.round(bpm * 10) / 10 : null,
-      key: _normalizeExternalKey(keyMatch?.[1] || keyFallback?.[1] || null),
-      url: songbpmUrl,
-    };
+    return { ...parseSongBPMHtml(html), url: songbpmUrl };
   } catch (e) {
     console.log(`   ⚠️ SongBPM: ${e.message}`);
     return null;
