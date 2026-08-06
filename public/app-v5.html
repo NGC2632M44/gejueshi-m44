@@ -701,6 +701,8 @@ async function runAnalysis() {
           showMIRPanel(mirData);
           setStatus("analyze-status", "✓ 分析 + MIR验证完成", "ok");
           markStep(1, "done");
+        } else {
+          setStatus("analyze-status", "✓ 分析完成（MIR验证失败）", "ok");
         }
       } catch (e) {
         console.log("MIR cross-ref skipped:", e.message);
@@ -720,8 +722,50 @@ function showMIRPanel(mirData) {
   const ref = mirData.crossReference || {};
   const rec = mirData.recommended || {};
   const localDisagree = ref.local_disagreement || {};
+  const sources = mirData.sources || [];
+  const externalOk = sources.some(s => s.status === "ok" && s.name !== "local");
   const originalBpm = audioFeatures?.manual_correction?.original_bpm ?? ref.bpm_values?.local ?? audioFeatures?.bpm;
   const originalKey = audioFeatures?.manual_correction?.original_key ?? ref.key_values?.local ?? audioFeatures?.key;
+
+  // 防止重复分析时累加动态内容
+  $("v-detected-bpm").textContent = "";
+  $("v-detected-key").textContent = "";
+  $("v-detected-bpm").style.color = "";
+  $("v-detected-key").style.color = "";
+  document.querySelectorAll("#verify-panel .mir-dynamic").forEach(el => el.remove());
+
+  // 逐源状态
+  const sourceRow = document.createElement("div");
+  sourceRow.className = "mir-dynamic";
+  sourceRow.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin:8px 0;align-items:center";
+  const srcLabel = document.createElement("span");
+  srcLabel.style.cssText = "font:10px var(--f-mono);color:var(--ink-3)";
+  srcLabel.textContent = "数据源:";
+  sourceRow.appendChild(srcLabel);
+  const statusText = {
+    ok: "✅ 可用", no_data: "○ 无数据", no_config: "△ 未配置",
+    error: "✕ 失败", retired: "⊘ 已下线", found: "○ 已定位", no_match: "○ 未匹配",
+  };
+  for (const s of sources) {
+    const chip = document.createElement("span");
+    const txt = statusText[s.status] || s.status;
+    const color = s.status === "ok" ? "#4caf7d"
+      : s.status === "error" ? "var(--accent)"
+      : s.status === "no_config" ? "#c9a24d" : "var(--ink-3)";
+    chip.textContent = `${s.name} ${txt}`;
+    chip.style.cssText = `font:9px var(--f-mono);padding:2px 8px;border:1px solid ${color};color:${color};border-radius:99px;letter-spacing:.5px`;
+    sourceRow.appendChild(chip);
+  }
+  panel.insertBefore(sourceRow, panel.querySelector(".row"));
+
+  // 零外部源横幅
+  if (!externalOk) {
+    const banner = document.createElement("div");
+    banner.className = "mir-dynamic";
+    banner.style.cssText = "margin-top:8px;padding:8px 12px;background:rgba(201,162,77,.08);border-left:2px solid var(--gold);border-radius:4px;font:11px var(--f-mono);color:var(--gold)";
+    banner.textContent = "⚠️ 所有外部源不可用：以下为本地单源分析结果，BPM/Key 置信度不代表准确性";
+    panel.insertBefore(banner, panel.querySelector(".row"));
+  }
 
   if (audioFeatures && rec) {
     audioFeatures.network_mir = {
@@ -734,12 +778,12 @@ function showMIRPanel(mirData) {
     if (rec.bpm) {
       audioFeatures.bpm = rec.bpm;
       audioFeatures.bpm_confidence = Math.round((rec.bpm_confidence || rec.key_confidence || 0.55) * 100);
-      audioFeatures.bpm_method = "network_mir_calibrated";
+      audioFeatures.bpm_method = externalOk ? "network_mir_calibrated" : (audioFeatures.bpm_method || "local");
     }
     if (rec.key) {
       audioFeatures.key = rec.key;
       audioFeatures.key_confidence = Math.round((rec.key_confidence || 0.55) * 100);
-      audioFeatures.key_method = "network_mir_calibrated";
+      audioFeatures.key_method = externalOk ? "network_mir_calibrated" : (audioFeatures.key_method || "local");
     }
     if (rec.meter) audioFeatures.meter = rec.meter;
     if (rec.chord_sequence) audioFeatures.chord_sequence = rec.chord_sequence;
@@ -748,7 +792,11 @@ function showMIRPanel(mirData) {
     if (statVals[0] && rec.bpm) statVals[0].innerHTML = `${rec.bpm}<small> BPM</small>`;
     if (statVals[1] && rec.key) statVals[1].innerHTML = rec.key;
     if (statVals[9] && rec.chord_sequence) statVals[9].textContent = rec.chord_sequence;
-    if (statVals[10] && (rec.bpm || rec.key)) statVals[10].textContent = "network MIR + " + (audioFeatures.engine || "local");
+    if (statVals[10] && (rec.bpm || rec.key)) {
+      statVals[10].textContent = externalOk
+        ? "network MIR + " + (audioFeatures.engine || "local")
+        : "本地单源（外部源不可用）";
+    }
   }
 
   // BPM 推荐覆盖
@@ -779,6 +827,7 @@ function showMIRPanel(mirData) {
   // 共识状态
   const consensusTag = document.createElement("span");
   consensusTag.style.cssText = "display:inline-block;margin-left:8px;font:9px var(--f-mono);padding:2px 8px;border-radius:99px;letter-spacing:1px";
+  consensusTag.className = "mir-consensus";
   if (ref.consensus === "local_diverged") {
     consensusTag.textContent = "外部多数覆盖";
     consensusTag.style.background = "rgba(201,162,77,.15)";
@@ -793,7 +842,10 @@ function showMIRPanel(mirData) {
     consensusTag.style.color = "var(--accent)";
   }
   const headEl = panel.querySelector(".verify-head");
-  if (headEl) headEl.appendChild(consensusTag);
+  if (headEl) {
+    headEl.querySelectorAll(".mir-consensus").forEach(el => el.remove());
+    headEl.appendChild(consensusTag);
+  }
 }
 
 function renderGuide(md) {
@@ -862,6 +914,10 @@ async function runResearch() {
     const res = await fetch(`${API}/api/research?q=${encodeURIComponent(query)}`);
     researchData = await res.json();
     const agg = researchData.aggregate || {};
+    const researchErrors = (researchData.errors || []).filter(Boolean);
+    if (researchErrors.length) {
+      strip.innerHTML += `<div style="width:100%;font:10px var(--f-mono);color:var(--ink-3);padding:4px 0">⚠️ 部分数据源失败: ${escapeHTML(researchErrors.join(" | "))}</div>`;
+    }
 
     strip.style.display = "flex";
     strip.innerHTML = "";
