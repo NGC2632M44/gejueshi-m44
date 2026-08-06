@@ -104,11 +104,13 @@ function parseHookTheoryHtml(html) {
   };
 }
 
-async function queryHookTheory(query) {
+async function queryHookTheory(query, songTitle, artistName) {
   const parsed = _parseTrackQuery(query);
-  if (!parsed?.artist || !parsed?.title) return null;
+  const artist = artistName || parsed?.artist || null;
+  const title = songTitle || parsed?.title || null;
+  if (!artist || !title) return null;
 
-  const url = `https://www.hooktheory.com/theorytab/view/${_slugifyPart(parsed.artist)}/${_slugifyPart(parsed.title)}`;
+  const url = `https://www.hooktheory.com/theorytab/view/${_slugifyPart(artist)}/${_slugifyPart(title)}`;
   try {
     const res = await fetch(url, {
       headers: {
@@ -122,98 +124,11 @@ async function queryHookTheory(query) {
     return parsedData ? {
       ...parsedData,
       url,
-      track_name: parsed.title,
-      artist_name: parsed.artist,
+      track_name: title,
+      artist_name: artist,
     } : null;
   } catch (e) {
     console.log(`   ⚠️ Hooktheory: ${e.message}`);
-    return null;
-  }
-}
-
-// ── Spotify OAuth (Client Credentials Flow) ──
-let _spotifyToken = null;
-let _spotifyTokenExpiry = 0;
-
-async function getSpotifyToken() {
-  const id = process.env.SPOTIFY_CLIENT_ID;
-  const secret = process.env.SPOTIFY_CLIENT_SECRET;
-  if (!id || !secret) return null;
-
-  if (_spotifyToken && Date.now() < _spotifyTokenExpiry) return _spotifyToken;
-
-  try {
-    const auth = Buffer.from(`${id}:${secret}`).toString("base64");
-    const res = await fetch("https://accounts.spotify.com/api/token", {
-      method: "POST",
-      headers: {
-        "Authorization": `Basic ${auth}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: "grant_type=client_credentials",
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) { console.log(`   ⚠️ Spotify auth: ${res.status}`); return null; }
-    const data = await res.json();
-    _spotifyToken = data.access_token;
-    _spotifyTokenExpiry = Date.now() + (data.expires_in - 60) * 1000;
-    return _spotifyToken;
-  } catch (e) {
-    console.log(`   ⚠️ Spotify auth failed: ${e.message}`);
-    return null;
-  }
-}
-
-/**
- * Spotify Audio Features 查询
- * 返回: BPM, Key, Mode, Energy, Danceability, Valence, Acousticness 等
- */
-async function querySpotify(query) {
-  const token = await getSpotifyToken();
-  if (!token) return null;
-
-  try {
-    // 1. 搜索曲目
-    const searchUrl = `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=1`;
-    const searchRes = await fetch(searchUrl, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!searchRes.ok) return null;
-    const searchData = await searchRes.json();
-    const track = searchData.tracks?.items?.[0];
-    if (!track) return null;
-
-    // 2. 获取 Audio Features
-    const afUrl = `https://api.spotify.com/v1/audio-features/${track.id}`;
-    const afRes = await fetch(afUrl, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!afRes.ok) return null;
-    const af = await afRes.json();
-
-    // Spotify pitch class notation → 标准调名
-    const pitchMap = { 0: "C", 1: "Db", 2: "D", 3: "Eb", 4: "E", 5: "F", 6: "Gb", 7: "G", 8: "Ab", 9: "A", 10: "Bb", 11: "B" };
-
-    return {
-      source: "spotify",
-      bpm: af.tempo ? Math.round(af.tempo * 10) / 10 : null,
-      key: af.key !== -1 ? `${pitchMap[af.key]} ${af.mode === 1 ? "major" : "minor"}` : null,
-      key_confidence: af.key !== -1 ? (af.mode_confidence || 0.7) : null,
-      energy: af.energy != null ? Math.round(af.energy * 100) : null,
-      danceability: af.danceability != null ? Math.round(af.danceability * 100) : null,
-      valence: af.valence != null ? Math.round(af.valence * 100) : null,
-      acousticness: af.acousticness != null ? Math.round(af.acousticness * 100) : null,
-      instrumentalness: af.instrumentalness != null ? Math.round(af.instrumentalness * 100) : null,
-      spotify_id: track.id,
-      spotify_popularity: track.popularity,
-      track_name: track.name,
-      artist_name: track.artists?.[0]?.name,
-      album_name: track.album?.name,
-    };
-  } catch (e) {
-    console.log(`   ⚠️ Spotify query: ${e.message}`);
     return null;
   }
 }
@@ -248,7 +163,8 @@ export function parseSongBPMHtml(html) {
 
 /**
  * SongBPM 直接页面抓取 (需要完整 URL，如 https://songbpm.com/@rose-gray/wet-wild-njwcb)
- * API 搜索已死 (404) + POST 搜索被 CSRF 保护 (403)，只能通过已知 URL 直接访问
+ * 仅手动校验：官方 API 搜索/ID 均查不到部分歌曲（Rose Gray 实测 no result），
+ * 因此不做自动定位，用户粘贴完整 URL 后解析页面。
  */
 export async function querySongBPMByUrl(songbpmUrl) {
   try {
@@ -265,7 +181,6 @@ export async function querySongBPMByUrl(songbpmUrl) {
   }
 }
 
-// 旧版 search-based 函数保留为空 (API 已死)
 /**
  * SongBPM 官方 API 搜索（需要 api_key，走代理 + UA/Referer 绕过 Cloudflare）
  * 返回: tempo / key_of / uri / artist。按艺人名过滤同名歌曲。
@@ -352,7 +267,7 @@ export async function mirCrossReference(query, localResult, opts = {}) {
   // ── 并行查询所有源 ──
   const songbpmApiKey = opts.getsongbpmApiKey || process.env.GETSONGBPM_API_KEY || "";
   const [hooktheory, songbpm, mb] = await Promise.allSettled([
-    queryHookTheory(query),
+    queryHookTheory(query, opts.songTitle, opts.artistName),
     querySongBPM(query, songbpmApiKey, opts.songTitle, opts.artistName),
     queryMusicBrainz(query),
   ]);
@@ -365,10 +280,7 @@ export async function mirCrossReference(query, localResult, opts = {}) {
     sources.push({ name: "hooktheory", status: "no_data" });
   }
 
-  // Spotify
-  sources.push({ name: "spotify", status: "retired", note: "requires Premium" });
-
-  // SongBPM — API 404 + 页面结构变更，暂时下线
+  // SongBPM — 官方 API（部分歌曲未收录 → no_data；手动 URL 另行校验）
   if (songbpm.value) {
     sources.push({ name: "songbpm", status: "ok" });
     external.push(songbpm.value);
@@ -380,8 +292,6 @@ export async function mirCrossReference(query, localResult, opts = {}) {
     sources.push({ name: "songbpm", status: "no_data" });
   }
 
-  // AcousticBrainz — 服务已下线 (HTTP 000)，暂时跳过
-  sources.push({ name: "acousticbrainz", status: "retired" });
   sources.push({ name: "musicbrainz", status: mb.value ? "found" : (mb.reason ? "error" : "no_match") });
 
   // ── 交叉验证 ──
@@ -395,6 +305,16 @@ export async function mirCrossReference(query, localResult, opts = {}) {
 
   const crossRef = crossReference(localData, external);
   const reliability = assessKeyReliability(localData, crossRef);
+
+  // 时长交叉校验（MusicBrainz 录音时长 vs 本地 ffprobe 原时长）
+  const mbDurSec = mb.value?.duration_ms ? mb.value.duration_ms / 1000 : null;
+  const localDurSec = localResult?.duration_seconds != null ? Number(localResult.duration_seconds) : null;
+  const duration_check = {
+    local_seconds: Number.isFinite(localDurSec) ? localDurSec : null,
+    external_seconds: mbDurSec != null ? Math.round(mbDurSec) : null,
+    source: "MusicBrainz",
+    match: Number.isFinite(localDurSec) && mbDurSec != null ? Math.abs(localDurSec - mbDurSec) <= 2 : null,
+  };
 
   // ── 最终推荐值 ──
   const recommended = {
@@ -416,6 +336,7 @@ export async function mirCrossReference(query, localResult, opts = {}) {
     query,
     sources,
     external_results: external,
+    duration_check,
     crossReference: crossRef,
     reliability,
     recommended,

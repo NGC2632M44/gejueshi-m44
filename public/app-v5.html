@@ -804,12 +804,26 @@ function showMIRPanel(mirData) {
   }
   panel.insertBefore(sourceRow, panel.querySelector(".row"));
 
+  // 时长校验（MusicBrainz 录音时长 vs 本地原文时长）
+  const durChk = mirData.duration_check;
+  if (durChk && (durChk.local_seconds != null || durChk.external_seconds != null)) {
+    const durEl = document.createElement("div");
+    durEl.className = "mir-dynamic";
+    durEl.style.cssText = "margin:6px 0 8px;font:10px var(--f-mono);color:var(--ink-2)";
+    const localTxt = durChk.local_seconds != null ? durChk.local_seconds + "s" : "—";
+    const extTxt = durChk.external_seconds != null ? durChk.external_seconds + "s" + (durChk.source ? `（${durChk.source}）` : "") : "—";
+    const matchTxt = durChk.match === true ? "一致" : durChk.match === false ? "不一致" : "无法对比";
+    const matchColor = durChk.match === true ? "#4caf7d" : durChk.match === false ? "var(--accent)" : "var(--ink-3)";
+    durEl.innerHTML = `时长校验: 本地 <b>${localTxt}</b> vs 外部 <b>${extTxt}</b> → <b style="color:${matchColor}">${matchTxt}</b>`;
+    panel.insertBefore(durEl, panel.querySelector(".row"));
+  }
+
   // 零外部源横幅
   if (!externalOk) {
     const banner = document.createElement("div");
     banner.className = "mir-dynamic";
     banner.style.cssText = "margin-top:8px;padding:8px 12px;background:rgba(201,162,77,.08);border-left:2px solid var(--gold);border-radius:4px;font:11px var(--f-mono);color:var(--gold)";
-    banner.textContent = "⚠️ 所有外部源不可用：以下为本地单源分析结果，BPM/Key 置信度不代表准确性";
+    banner.textContent = "⚠️ 当前 BPM/Key 仅为本地单源结果：getsongbpm 未收录该曲、MusicBrainz 只定位录音不提供 BPM/Key。可粘贴上方 SongBPM 歌曲页 URL 手动校准；未校准前置信度不代表准确性";
     panel.insertBefore(banner, panel.querySelector(".row"));
   }
 
@@ -919,14 +933,11 @@ async function verifySongBPMUrl() {
     const cross = await crossRes.json();
     if (!cross.success) throw new Error(cross.error || "交叉验证失败");
     const rec = cross.recommendedFields || {};
+    const prevSources = (window._mirResult?.sources || []).filter(
+      s => s.name !== "songbpm" && s.name !== "spotify" && s.name !== "acousticbrainz"
+    );
     const mirData = {
-      sources: [
-        { name: "hooktheory", status: "no_data" },
-        { name: "spotify", status: "retired" },
-        { name: "songbpm", status: "ok" },
-        { name: "acousticbrainz", status: "retired" },
-        { name: "musicbrainz", status: "found" },
-      ],
+      sources: [...prevSources, { name: "songbpm", status: "ok" }],
       crossReference: cross.crossReference,
       external_results: externalSources,
       recommended: {
@@ -964,13 +975,15 @@ async function fetchLyrics() {
   btn.disabled = true;
   busy("lyrics-status", "搜索歌词中…");
   try {
-    const res = await fetch(`${API}/api/lyrics?q=${encodeURIComponent(q.trim())}`);
+    const songQ = [$("online-song").value.trim(), $("online-artist").value.trim()].filter(Boolean).join(" ") || q.trim();
+    const res = await fetch(`${API}/api/lyrics?q=${encodeURIComponent(q.trim())}&song=${encodeURIComponent(songQ)}`);
     const data = await res.json();
     if (data.success && data.lyrics) {
       $("lyrics-text").value = data.lyrics;
       saveDraft();
-      setStatus("lyrics-status", "✓ 已提取 " + data.lyrics.length + " 字 — 已就绪", "ok");
-      $("lyrics-section").querySelector("summary").innerHTML = "📝 歌词 ✅ (" + data.lyrics.length + "字)";
+      const src = data.source || "外部源";
+      setStatus("lyrics-status", "✓ 已提取 " + data.lyrics.length + " 字（来源 " + src + "）— 已就绪", "ok");
+      $("lyrics-section").querySelector("summary").innerHTML = "📝 歌词 ✅ (" + data.lyrics.length + "字 · " + src + ")";
       toast("歌词已自动提取", "ok");
     } else {
       setStatus("lyrics-status", "✕ " + (data.hint || "未找到歌词，请手动粘贴"), "err");
@@ -1015,15 +1028,14 @@ async function runResearch() {
     researchData = await res.json();
     const agg = researchData.aggregate || {};
     const researchErrors = (researchData.errors || []).filter(Boolean);
+    strip.style.display = "flex";
+    strip.innerHTML = "";
     if (researchErrors.length) {
       strip.innerHTML += `<div style="width:100%;font:10px var(--f-mono);color:var(--ink-3);padding:4px 0">⚠️ 部分数据源失败: ${escapeHTML(researchErrors.join(" | "))}</div>`;
     }
     if (agg.receptionQuotes && agg.receptionQuotes.length) {
       strip.innerHTML += `<div style="width:100%;font:12px/1.8 var(--f-serif);color:var(--ink-2);padding:6px 0">${agg.receptionQuotes.map(q => '「' + escapeHTML(q) + '」').join('<br>')}</div>`;
     }
-
-    strip.style.display = "flex";
-    strip.innerHTML = "";
 
     if (agg.reviewScores) {
       const rs = agg.reviewScores;
@@ -1159,6 +1171,45 @@ async function runResearch() {
         updateCoverDisplay(cnArtwork, { ...agg, title: neAlbum.name || agg.title, artist: neAlbum.artist || agg.artist, labels: agg.labels || [] });
         console.log("🖼️ 封面来自网易云主专辑");
       }
+
+      // 多源基础信息校准：歌名/艺人/专辑/年份/厂牌/流派/时长（共识值优先，冲突保留人工）
+      try {
+        const calRes = await fetch(`${API}/api/research/calibrate`, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            query: cnQ,
+            local: audioFeatures || null,
+            neteaseSong: cn.neteaseSong || null,
+            neteaseAlbum: cn.netease || null,
+            lastfmTrack: cn.lastfmTrack || null,
+            genius: cn.genius || null,
+            youtube: cn.youtube || null,
+            albumAgg: agg || null,
+            discogsTop: researchData.discogs?.results?.[0] || null,
+          }),
+        });
+        const cal = (await calRes.json()).calibration;
+        if (cal) {
+          researchData.calibration = cal;
+          const fillMeta = (id, v) => { if (v && !$(`meta-${id}`).value) $(`meta-${id}`).value = v; };
+          fillMeta("title", cal.title?.value);
+          fillMeta("artist", cal.artist?.value);
+          fillMeta("album", cal.album?.value);
+          fillMeta("year", cal.year?.value);
+          fillMeta("label", cal.label?.value);
+          fillMeta("genre", cal.genre?.value);
+          const calParts = [];
+          if (cal.title) calParts.push(`歌名 ${cal.title.count}/${cal.title.total}源`);
+          if (cal.artist) calParts.push(`艺人 ${cal.artist.count}/${cal.artist.total}源`);
+          if (cal.album) calParts.push(`专辑 ${cal.album.count}/${cal.album.total}源`);
+          if (calParts.length) strip.innerHTML += `<div class="badge"><div class="s">✓</div><div class="k">多源校准 ${escapeHTML(calParts.join(" · "))}</div></div>`;
+          if (cal.durationCheck && cal.durationCheck.match === false) {
+            const dc = cal.durationCheck;
+            strip.innerHTML += `<div class="badge" style="border-color:var(--accent)"><div class="s">⚠️</div><div class="k">时长不符: 本地${dc.local_seconds}s vs 平台${dc.recommended_seconds}s</div></div>`;
+          }
+        }
+      } catch (calErr) { console.log("calibration failed:", calErr.message); }
     } catch (e) { console.log("Chinese platform fetch failed:", e.message); }
 
     setStatus("research-status", "✓ 研究完成", "ok");

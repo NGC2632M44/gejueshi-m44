@@ -1,5 +1,35 @@
 # Changelog
 
+## [3.8.0] - 2026-08-07
+
+### Added
+- 多源基础信息校准模块（`services/calibrate.js`）：歌名 / 艺人 / 专辑 / 年份 /
+  厂牌 / 流派 / 时长做多源共识，来源为网易云、Last.fm、Genius、YouTube、
+  MusicBrainz（aggregate）、Discogs Master；Step2 完成后自动调用并回填 Step4，
+  评分 prompt 同步携带“基础信息校准”段。
+- MIR 面板新增“时长校验”：本地 ffprobe 原文时长 vs MusicBrainz 录音时长，
+  不一致时高亮提示。
+- 歌词来源显示：LRCLIB / Genius / 网易云 会标注在界面与状态栏。
+- 新增校准与 prompt 单测（`test_calibrate.js`、`test_prompt_calibration.js`）。
+
+### Fixed
+- 网易云“单曲评论”改用联网检索的单曲名（此前错误地用专辑搜索词，导致单曲
+  评论永远取到专辑同名曲）。
+- Last.fm 时长单位换算（API 返回毫秒，此前被当成秒，导致校准推荐 182000s）。
+- YouTube 标题清洗：去掉艺人前缀与 (Official Visualiser) 等后缀，标题共识
+  不再被 “Rose Gray - Wet & Wild” 污染。
+- buildAggregate 回退链：MusicBrainz/iTunes 未命中时优先 Last.fm / Discogs
+  的专辑身份，不再退回 Wikipedia 艺人页（此前 “Louder, Please Rose Gray”
+  会被解析成 title=Rose Gray / artist=?）。
+- 聚合流派标签过滤纯年份（如 2025）不再混入“流派”。
+- MIR/歌词面板清理 Spotify、AcousticBrainz 已下线残留；SongBPM 手动 URL
+  面板只显示真实查询过的来源。
+- `/api/status` 来源列表去掉已下线的 RYM/AOTY (via DDG) 与未安装的 Demucs
+  误导项，改为实际在用的免费 API 与本地引擎说明。
+
+### Changed
+- 版本统一 3.8.0。
+
 ## [3.7.0] - 2026-08-07
 
 ### Added

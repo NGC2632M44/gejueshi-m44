@@ -345,6 +345,26 @@ export function buildScoringPrompt(audioFeatures, listeningAnswers = "", albumMe
     prompts.push("");
   }
 
+  // ── 基础信息校准（多源共识，用于确认作品身份与时长）──
+  const cal = researchData?.calibration;
+  if (cal) {
+    prompts.push("## 基础信息校准（多源共识）");
+    if (cal.title) prompts.push(`- 歌名: ${cal.title.value}（${cal.title.count}/${cal.title.total} 源一致${cal.title.conflict ? "，存在冲突" : ""}）`);
+    if (cal.artist) prompts.push(`- 艺人: ${cal.artist.value}（${cal.artist.count}/${cal.artist.total} 源一致${cal.artist.conflict ? "，存在冲突" : ""}）`);
+    if (cal.album) prompts.push(`- 专辑: ${cal.album.value}（${cal.album.count}/${cal.album.total} 源一致${cal.album.conflict ? "，存在冲突" : ""}）`);
+    if (cal.year) prompts.push(`- 年份: ${cal.year.value}`);
+    if (cal.label) prompts.push(`- 厂牌: ${cal.label.value}`);
+    if (cal.genre) prompts.push(`- 流派: ${cal.genre.value}`);
+    if (cal.duration) prompts.push(`- 平台共识时长: ${cal.duration.value}s（${cal.duration.count}/${cal.duration.total} 源一致）`);
+    if (cal.durationCheck && cal.durationCheck.local_seconds != null) {
+      const dc = cal.durationCheck;
+      const st = dc.match === true ? "一致" : dc.match === false ? "不一致（以平台共识为准）" : "无法对比";
+      prompts.push(`- 时长校验: 本地 ${dc.local_seconds}s vs 平台 ${dc.recommended_seconds}s → ${st}`);
+    }
+    prompts.push("以上校准值用于确认歌曲/专辑身份；引用基础信息时优先采用共识值，若存在冲突需在 rationale 中说明所采用的版本。");
+    prompts.push("");
+  }
+
   // ── 平台评分校准（核心新增）──
   if (platformRatings && Object.keys(platformRatings).length > 0) {
     prompts.push("## 各平台评分参考（校准锚点）");

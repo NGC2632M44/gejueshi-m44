@@ -32,6 +32,17 @@ async function proxyFetch(url, opts = {}) {
   return fetch(url, opts);
 }
 
+function _textMatchesQuery(text, query) {
+  const tokens = (query || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fff\s]+/g, " ")
+    .split(/\s+/)
+    .filter((t) => t.length > 3);
+  if (!tokens.length) return true;
+  const hay = " " + (text || "").toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff\s]+/g, " ") + " ";
+  return tokens.every((t) => hay.includes(t));
+}
+
 // ── 研究缓存 (30分钟TTL，解决重复搜索结果不一致) ──
 const RESEARCH_CACHE = new Map();
 const RESEARCH_CACHE_TTL = 30 * 60 * 1000;
@@ -277,46 +288,93 @@ async function fetchDiscogsAPI(query,token) {
   // 消费者 Consumer Key 不是 PAT，直接当 token 用会返回 401。
   if(!token || token.length < 30)return null;
   const headers={"User-Agent":MB_UA,"Authorization":`Discogs token=${token}`};
-  const res=await fetch(`https://api.discogs.com/database/search?q=${encodeURIComponent(query)}&type=release&per_page=10`,{headers,signal:AbortSignal.timeout(T)});
-  if(!res.ok)throw new Error(`Discogs API ${res.status}`);
-  const data=await res.json();
-  const scored=(data.results||[]).map(r=>({
-    item:{
-      id:r.id,title:r.title,year:r.year,format:r.format?.join(", "),label:r.label?.[0],
-      genre:r.genre?.[0],style:r.style?.[0],country:r.country,
-      coverImage:r.cover_image,url:r.uri?`https://www.discogs.com${r.uri}`:null,
-    },
-    score: rankTitleScore((r.title||"").replace(/^[^-]+-\s*/,""),query)
-      - (/(deluxe|bonus|limited|reissue|remaster)/i.test(r.title||"")?25:0),
-  })).filter(s=>s.item.url).sort((a,b)=>b.score-a.score);
-  const base=scored.map(s=>s.item);
-  const top=base.slice(0,3);
-  const details=await Promise.allSettled(top.map(r=>
-    fetch(`https://api.discogs.com/releases/${r.id}`,{headers,signal:AbortSignal.timeout(T)})
-      .then(x=>x.ok?x.json():null)
-  ));
-  const results=base.map((r,i)=>{
-    const d=details[i]?.status==="fulfilled"?details[i].value:null;
-    if(!d)return r;
-    return {
-      ...r,
-      title:d.title||r.title,
-      year:d.year||r.year,
-      label:d.labels?.[0]?.name||r.label,
-      labels:(d.labels||[]).map(l=>l.name).filter(Boolean),
-      formats:(d.formats||[]).map(f=>f.name+(f.descriptions?.length?" "+f.descriptions.join("/"):"")),
-      country:d.country||r.country,
-      coverImage:r.coverImage||d.images?.[0]?.uri||null,
-      tracklist:(d.tracklist||[]).slice(0,12).map(t=>t.title),
-      community:d.community?{
-        have:d.community.have??null,
-        want:d.community.want??null,
-        rating:d.community.rating?.average??null,
-        ratingCount:d.community.rating?.count??null,
-      }:null,
-    };
-  });
-  return{results,count:results.length,source:"Discogs API"};
+  const dgJson=async(url)=>{
+    const res=await fetch(url,{headers,signal:AbortSignal.timeout(T)});
+    if(!res.ok)throw new Error(`Discogs API ${res.status}`);
+    return res.json();
+  };
+  const fmt=(f)=>f.name+(f.descriptions?.length?" "+f.descriptions.join("/"):"");
+  // 1) 优先 Master Release：聚合所有版本，社区拥有/想要最有参考价值
+  try {
+    const search=await dgJson(`https://api.discogs.com/database/search?q=${encodeURIComponent(query)}&type=master&per_page=5`);
+    const scored=(search.results||[]).map(r=>({
+      item:r,
+      score: rankTitleScore((r.title||"").replace(/^[^-]+-\s*/,""),query)
+        - (/(deluxe|bonus|limited|reissue|remaster|compilation)/i.test(r.title||"")?30:0),
+    })).sort((a,b)=>b.score-a.score);
+    const master=scored[0]?.item;
+    if(master?.id){
+      const m=await dgJson(`https://api.discogs.com/masters/${master.id}`);
+      const mainId=m.main_release;
+      let versionIds=[mainId];
+      try{
+        const versions=await dgJson(`https://api.discogs.com/masters/${master.id}/versions?per_page=5&sort=have&sort_order=desc`);
+        versionIds=[...new Set([mainId,...(versions.versions||[]).map(v=>v.id).filter(Boolean)])].slice(0,3);
+      }catch(_){}
+      const details=(await Promise.allSettled(versionIds.map(id=>dgJson(`https://api.discogs.com/releases/${id}`).catch(()=>null))))
+        .map(x=>x.status==="fulfilled"?x.value:null).filter(Boolean);
+      const mainDetail=details.find(d=>d.id===mainId)||details[0]||null;
+      const rated=[...(details||[])].filter(d=>d.community?.rating?.count).sort((a,b)=>b.community.rating.count-a.community.rating.count)[0]||mainDetail;
+      const result={
+        id:master.id,
+        master:true,
+        masterId:master.id,
+        mainReleaseId:mainId,
+        title:m.title||master.title,
+        year:m.year||master.year,
+        artist:(m.artists||[]).map(a=>a.name).join(", ")||null,
+        genre:m.genres?.[0]||master.genre?.[0],
+        genres:m.genres||[],
+        style:m.styles?.[0],
+        styles:m.styles||[],
+        label:mainDetail?.labels?.[0]?.name||master.label?.[0],
+        labels:(mainDetail?.labels||[]).map(l=>l.name).filter(Boolean),
+        format:(mainDetail?.formats||[]).map(fmt).join(", ")||master.format?.join(", "),
+        formats:(mainDetail?.formats||[]).map(fmt),
+        country:mainDetail?.country||master.country||null,
+        coverImage:master.cover_image||m.images?.[0]?.uri||null,
+        tracklist:(m.tracklist||[]).slice(0,15).map(t=>t.title),
+        community:{
+          have:master.community?.have??mainDetail?.community?.have??null,
+          want:master.community?.want??mainDetail?.community?.want??null,
+          rating:rated?.community?.rating?.average??null,
+          ratingCount:rated?.community?.rating?.count??null,
+          ratingReleaseId:rated?.id??null,
+        },
+        url:master.uri?`https://www.discogs.com${master.uri}`:null,
+      };
+      return {results:[result],count:1,source:"Discogs API (Master)"};
+    }
+  } catch(e){
+    console.log(`   ♪ Discogs master: ${e.message}`);
+  }
+  // 2) 回退：没有 Master 时用发行版搜索
+  try {
+    const data=await dgJson(`https://api.discogs.com/database/search?q=${encodeURIComponent(query)}&type=release&per_page=10`);
+    const scored=(data.results||[]).map(r=>({
+      item:{id:r.id,title:r.title,year:r.year,format:r.format?.join(", "),label:r.label?.[0],genre:r.genre?.[0],style:r.style?.[0],country:r.country,coverImage:r.cover_image,url:r.uri?`https://www.discogs.com${r.uri}`:null},
+      score:rankTitleScore((r.title||"").replace(/^[^-]+-\s*/,""),query)-(/(deluxe|bonus|limited|reissue|remaster)/i.test(r.title||"")?25:0),
+    })).filter(s=>s.item.url).sort((a,b)=>b.score-a.score);
+    const base=scored.map(s=>s.item).slice(0,3);
+    const details=(await Promise.allSettled(base.map(r=>dgJson(`https://api.discogs.com/releases/${r.id}`).catch(()=>null))))
+      .map(x=>x.status==="fulfilled"?x.value:null).filter(Boolean);
+    const results=base.map(r=>{
+      const d=details.find(x=>x.id===r.id);
+      if(!d)return r;
+      return {...r,
+        title:d.title||r.title,year:d.year||r.year,label:d.labels?.[0]?.name||r.label,
+        labels:(d.labels||[]).map(l=>l.name).filter(Boolean),
+        formats:(d.formats||[]).map(fmt),
+        country:d.country||r.country,coverImage:r.coverImage||d.images?.[0]?.uri||null,
+        tracklist:(d.tracklist||[]).slice(0,12).map(t=>t.title),
+        community:d.community?{have:d.community.have??null,want:d.community.want??null,rating:d.community.rating?.average??null,ratingCount:d.community.rating?.count??null}:null,
+      };
+    });
+    return{results,count:results.length,source:"Discogs API"};
+  } catch(e){
+    console.log(`   ♪ Discogs release: ${e.message}`);
+    return null;
+  }
 }
 
 /**
@@ -332,7 +390,16 @@ export async function fetchGeniusSong(query, token) {
     });
     if (!res.ok) return null;
     const data = await res.json();
-    const hit = data?.response?.hits?.[0]?.result;
+    const hits = data?.response?.hits || [];
+    const matched = hits.filter((h) => {
+      const r = h.result || {};
+      return _textMatchesQuery(`${r.title} ${r.primary_artist?.name || ""}`, query);
+    });
+    const hit = matched
+      .slice()
+      .sort((a, b) => ((b.result?.stats?.pageviews) || 0) - ((a.result?.stats?.pageviews) || 0))[0]?.result
+      || matched[0]?.result
+      || null;
     if (!hit) return null;
     return {
       title: hit.title || null,
@@ -341,6 +408,50 @@ export async function fetchGeniusSong(query, token) {
       id: hit.id || null,
       pageviews: hit.stats?.pageviews ?? null,
     };
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * Genius 歌词页解析（免费，无官方歌词 API）
+ * 从 data-lyrics-container 提取纯文本歌词。
+ */
+export async function fetchGeniusLyrics(url) {
+  if (!url || !url.includes("genius.com")) return null;
+  try {
+    const res = await proxyFetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36" },
+      signal: AbortSignal.timeout(T),
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+    const containers = [...html.matchAll(/<div[^>]*data-lyrics-container="true"[^>]*>([\s\S]*?)<\/div>/g)];
+    const blocks = containers.map((m) =>
+      m[1]
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<\/p>/gi, "\n")
+        .replace(/<[^>]+>/g, "")
+        .replace(/&amp;/g, "&")
+        .replace(/&#x27;|&#39;/g, "'")
+        .replace(/&quot;/g, '"')
+        .replace(/&gt;/g, ">")
+        .replace(/&lt;/g, "<")
+        .replace(/&nbsp;/g, " ")
+        .split("\n").map((l) => l.trim()).filter(Boolean).join("\n")
+    );
+    const lyrics = blocks
+      .join("\n")
+      .split("\n")
+      .filter((l) => {
+        const t = l.trim();
+        if (!t) return false;
+        if (/\b(Contributors|Translations|Embed|Share|Annotations)\b/i.test(t)) return false;
+        return true;
+      })
+      .join("\n")
+      .trim();
+    return lyrics.length > 80 ? lyrics : null;
   } catch (_) {
     return null;
   }
@@ -386,6 +497,7 @@ export async function fetchYouTubeStats(query, apiKey) {
     }).sort((a, b) => b.score - a.score || b.views - a.views);
 
     const top = ranked[0]?.item;
+    if (!top || !_textMatchesQuery(`${top.snippet?.title || ""} ${top.snippet?.channelTitle || ""}`, query)) return null;
     const videoId = top?.id?.videoId;
     if (!videoId) return null;
     const stat = statsMap.get(videoId) || {};
@@ -432,7 +544,7 @@ export async function fetchLastfmTrack(query, apiKey) {
     }).sort((a, b) => b.score - a.score);
 
     const best = ranked[0]?.m;
-    if (!best) return null;
+    if (!best || !_textMatchesQuery(`${best.name} ${best.artist}`, query)) return null;
 
     const infoRes = await proxyFetch(
       `https://ws.audioscrobbler.com/2.0/?method=track.getinfo&artist=${encodeURIComponent(best.artist)}&track=${encodeURIComponent(best.name)}&api_key=${apiKey}&format=json`,
@@ -585,6 +697,8 @@ function buildAggregate(r) {
   if(mb&&(mbS>itS*2||(mb?.artists?.[0]&&!it?.artist)||(mb?.artists?.[0]&&mbS>100))){a.title=mb.title;a.artist=mb.artists?.[0]||"?";a.sources.push("MusicBrainz");if(it)a.sources.push("iTunes");}
   else if(it){a.title=it.title;a.artist=it.artist||"?";a.sources.push("iTunes");if(mb)a.sources.push("MusicBrainz");}
   else if(mb){a.title=mb.title;a.artist=mb.artists?.[0]||"?";a.sources.push("MusicBrainz");}
+  else if(lf?.title){a.title=lf.title;a.artist=lf.artist||"?";a.sources.push("Last.fm");}
+  else if(dg?.results?.[0]?.title){a.title=dg.results[0].title;a.artist=dg.results[0].artist||"?";a.sources.push("Discogs");}
   else{a.title=wp?.title||r.query;a.artist="?";if(wp)a.sources.push("Wikipedia");}
   if(wp?.title)a.sources.push("Wikipedia");if(lf?.title)a.sources.push("Last.fm");if(dg?.results?.length)a.sources.push("Discogs");
   if(rym?.rating)a.sources.push("RateYourMusic(via DDG)");if(aoty?.score)a.sources.push("AOTY(via DDG)");
@@ -592,7 +706,7 @@ function buildAggregate(r) {
   const iMB=a.sources[0]==="MusicBrainz";
   a.date=iMB?(mb?.date||it?.releaseDate):(it?.releaseDate||mb?.date);a.date||=lf?.published||dg?.results?.[0]?.year||discogsYear(r)||null;
   a.genre=mb?.tags?.[0]||it?.genre||dg?.results?.[0]?.genre||null;
-  a.tags=[...new Set([...(mb?.tags||[]),...(it?.genres||[]),...(lf?.tags||[]),(dg?.results?.[0]?.style||null)])].filter(Boolean).slice(0,15);if(!a.tags?.length)a.tags=null;
+  a.tags=[...new Set([...(mb?.tags||[]),...(it?.genres||[]),...(lf?.tags||[]),(dg?.results?.[0]?.style||null)])].filter(Boolean).filter(t=>!/^\d{4}$/.test(t)).slice(0,15);if(!a.tags?.length)a.tags=null;
   a.labels= dg?.results?.[0]?.labels?.length ? dg.results[0].labels
     : (mb?.labels?.length ? mb.labels : (dg?.results?.[0]?.label ? [dg.results[0].label] : null));
   a.formats= dg?.results?.[0]?.formats?.length ? dg.results[0].formats

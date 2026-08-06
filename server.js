@@ -5,12 +5,13 @@ import cors from "cors";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import { researchAlbum, searchNetease, getNeteaseDetail, fetchGeniusSong, fetchYouTubeStats, fetchLastfmTrack } from "./services/researcher.js";
+import { researchAlbum, searchNetease, getNeteaseDetail, fetchGeniusSong, fetchGeniusLyrics, fetchYouTubeStats, fetchLastfmTrack } from "./services/researcher.js";
 import { fullAnalysis, generateListeningGuide, buildScoringPrompt, extractPlatformRatings, calcHeatScore, crossReference, reverseKeyFromTab, assessKeyReliability, buildAlbumCardData } from "./services/audio-analyzer.js";
 import { mirCrossReference } from "./services/mir-cross-ref.js";
 import { callAI, getEffectiveSettings, maskApiKey, readSettings, writeSettings } from "./services/ai.js";
 import { proxiedFetch, smartFetch } from "./services/proxy-fetch.js";
 import { getKeys } from "./services/keys.js";
+import { buildBasicCalibration } from "./services/calibrate.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -535,7 +536,8 @@ app.get("/api/research/chinese", async (req, res) => {
 
     // 单曲级：单曲评论数 + 所属专辑评论/收藏数
     let neteaseSong = null;
-    const songSearch = await searchNetease(q, "song");
+    // 单曲搜索必须用“联网检索·歌曲名/艺人”（分析的这首歌），而不是专辑搜索词
+    const songSearch = await searchNetease(songQ || q, "song");
     if (songSearch?.results?.length) {
       const top = songSearch.results[0];
       const [songDetail, songAlbumDetail] = await Promise.all([
@@ -545,6 +547,7 @@ app.get("/api/research/chinese", async (req, res) => {
       neteaseSong = {
         id: top.id, name: top.name, artists: top.artists,
         album: top.album, albumId: top.albumId,
+        duration_ms: top.duration || null,
         commentCount: songDetail?.commentCount ?? null,
         albumCommentCount: songAlbumDetail?.commentCount ?? null,
         albumSubCount: songAlbumDetail?.subCount ?? null,
@@ -578,6 +581,23 @@ app.get("/api/research/chinese", async (req, res) => {
     console.error(`❌ 中国平台搜索失败: ${err.message}`);
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+// 基础信息校准：歌名/艺人/专辑/年份/厂牌/时长 多源共识
+app.post("/api/research/calibrate", (req, res) => {
+  const { query, local, neteaseSong, neteaseAlbum, lastfmTrack, genius, youtube, albumAgg, discogsTop } = req.body || {};
+  const calibration = buildBasicCalibration({
+    query,
+    local,
+    neteaseSong,
+    neteaseAlbum,
+    lastfmTrack,
+    genius,
+    youtube,
+    albumAgg,
+    discogsTop,
+  });
+  res.json({ success: true, calibration });
 });
 
 app.get("/api/library", (req, res) => {
@@ -694,11 +714,12 @@ app.get("/api/status", (req, res) => {
     sources: [
       "Wikipedia", "MusicBrainz", "iTunes", "Last.fm", "Discogs API",
       "YouTube Data API", "Genius API", "SongBPM API", "LRCLIB",
-      "RYM (via DDG)", "AOTY (via DDG)",
+      "网易云音乐（评论/收藏/热度）", "Cover Art Archive（封面回退）",
       "—— v3.2 新增 ——",
       "标准化音频分析 (44100Hz/2048FFT/50%overlap/95%rolloff/EBU R128)",
       "Krumhansl-Schmuckler 调性检测 + Camelot 编码",
-      "Demucs htdemucs 音轨分离",
+      "容器魔数识别 + ffmpeg 归一化（Demucs 可选，未安装）",
+      "多源基础信息校准（歌名/艺人/专辑/年份/厂牌/流派/时长）",
       "多源交叉验证 BPM/Key (MIR数据库 + 吉他谱反算)",
       "DeepSeek 五维评分引擎",
       "专辑模式 — 聚合单曲数据生成专辑卡",
@@ -947,15 +968,17 @@ ${userGroundTruth || "（无）"}
 app.get("/api/lyrics", async (req, res) => {
   const q = (req.query.q || "").trim();
   if (!q) return res.status(400).json({ error: "请输入歌曲名+艺术家" });
+  const songQ = (req.query.song || "").trim() || q;
   try {
-    const songSearch = await searchNetease(q, "song");
+    const songSearch = await searchNetease(songQ, "song");
     if (!songSearch?.results?.length) {
       return res.json({ success: false, lyrics: null, hint: "未找到歌曲" });
     }
     const song = songSearch.results[0];
-    // LRCLIB 开放歌词库（无 Key），返回 LRC 纯文本，与 lyricsfile 格式兼容
+    const firstArtist = (song.artists || "").split("/")[0] || "";
+    const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, "");
+    // 1) LRCLIB 开放歌词库（无 Key），校验歌手/歌名一致后才采用
     try {
-      const firstArtist = (song.artists || "").split("/")[0] || "";
       const lrclibRes = await fetch(
         `https://lrclib.net/api/search?track_name=${encodeURIComponent(song.name)}&artist_name=${encodeURIComponent(firstArtist)}`,
         {
@@ -965,7 +988,11 @@ app.get("/api/lyrics", async (req, res) => {
       );
       if (lrclibRes.ok) {
         const lrclibData = await lrclibRes.json();
-        const match = (Array.isArray(lrclibData) ? lrclibData : []).find((x) => !x.instrumental && x.plainLyrics) || null;
+        const match = (Array.isArray(lrclibData) ? lrclibData : []).find(
+          (x) => !x.instrumental && x.plainLyrics
+            && norm(x.artistName || "").includes(norm(firstArtist))
+            && (norm(x.trackName || "").includes(norm(song.name)) || norm(song.name).includes(norm(x.trackName || "")))
+        ) || null;
         if (match?.plainLyrics) {
           return res.json({
             success: true,
@@ -976,7 +1003,23 @@ app.get("/api/lyrics", async (req, res) => {
         }
       }
     } catch (_) {}
-    // 回退：网易云歌词
+    // 2) Genius 页面解析（先用 API 精确定位歌曲页，再抓歌词）
+    try {
+      const keys = getKeys();
+      const g = await fetchGeniusSong(songQ, keys.geniusToken);
+      if (g?.url) {
+        const lyrics = await fetchGeniusLyrics(g.url);
+        if (lyrics) {
+          return res.json({
+            success: true,
+            lyrics,
+            source: "Genius",
+            song: { id: g.id, name: g.title, artists: g.artist },
+          });
+        }
+      }
+    } catch (_) {}
+    // 3) 网易云歌词兜底
     const { default: fetchWithProxy } = await import("node-fetch");
     const { HttpsProxyAgent } = await import("https-proxy-agent");
     const agent = new HttpsProxyAgent(process.env.GEJUESHI_PROXY_URL || "http://127.0.0.1:1001");
