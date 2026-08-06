@@ -1235,7 +1235,7 @@ app.post("/api/library/track-to-album", (req, res) => {
 app.listen(PORT, () => {
   console.log("");
   console.log("  ╔══════════════════════════════════════════════╗");
-  console.log("  ║    M44 v3.4 — 五维评分 + 专辑模式          ║");
+  console.log("  ║    M44 v3.5 — 五维评分 + 专辑模式          ║");
   console.log("  ║  词·曲·编·唱·混  →  五边形雷达图          ║");
   console.log("  ╠══════════════════════════════════════════════╣");
   console.log(`  ║  http://localhost:${PORT}                     ║`);

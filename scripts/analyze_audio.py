@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-歌掘士 v3.4 — 音频客观分析层（标准化参数版）
+歌掘士 v3.5 — 音频客观分析层（标准化参数版）
 输入: MP3/FLAC/WAV 文件路径
 输出: JSON (stdout) — BPM, 调性, 频谱, 响度, 动态, 立体声宽度
 
@@ -36,7 +36,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 # ── 版本 & 标准化常量 ──────────────────────────
-SCRIPT_VERSION = "3.4.0"
+SCRIPT_VERSION = "3.5.0"
 DEFAULT_SAMPLE_RATE = 44100
 FFT_SIZE = 2048
 HOP_LENGTH = 1024          # 50% overlap
@@ -1975,7 +1975,7 @@ def _build_evidence(bpm_data: dict, key_data: dict, sonara: dict, spectral: dict
 
 def _cli():
     parser = argparse.ArgumentParser(
-        description="歌掘士 v3.4 音频客观分析层（标准化参数版）",
+        description="歌掘士 v3.5 音频客观分析层（标准化参数版）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:

@@ -1,5 +1,24 @@
 # Changelog
 
+## [3.5.0] - 2026-08-06
+
+### Fixed
+- 时长：duration_seconds 改为原文件时长（ffprobe），裁剪后时长单独保留
+- SongBPM 手动 URL 解析真正可用（端点曾因函数未导出而一直失败）
+- 网易云专辑选择：标题精确匹配优先，不再把 Deluxe/Bonus 当主专辑；
+  封面优先使用 MusicBrainz release-group 主封面
+- 图片代理：直连失败后真正走 GEJUESHI_PROXY_URL（修复共享已中止 signal 的 bug）
+- 外部源请求真正走代理（node-fetch + HttpsProxyAgent）
+
+### Added
+- 网易云专辑/单曲评论与收藏分开返回；QQ 失败返回 null（不计入，不伪装 0）
+- 热度模型扩展：网易云专辑/单曲评论+收藏、QQ、RYM、Last.fm、Spotify/Apple/YouTube
+- Step2 → Step4 自动带出所属专辑；音频文件名自动生成联网检索名
+- MIR 面板新增 SongBPM URL 粘贴验证（交叉纠正 BPM/Key）
+- Wikipedia 乐评“一句话评价”提取并展示/渲染到卡片
+- 候选封面点选器（iTunes/网易云多版本）
+- 手动平台字段增加 Spotify/Apple/YouTube + 各平台搜索链接
+
 ## [3.4.0] - 2026-08-06
 
 ### Added

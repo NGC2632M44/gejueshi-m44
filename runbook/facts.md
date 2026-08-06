@@ -24,6 +24,11 @@
 | F18 | 启动脚本已移除明文 Key；桌面 bat 目录已修正指向 歌掘士 项目 | verified | Phase6 修改后核查 |
 | F19 | 版本统一为 3.4.0（package.json 为服务端唯一来源；Python 常量同步） | verified | package.json / analyze_audio.py / /api/status |
 | F20 | 全量测试：npm test 7 项 + pytest 9 项通过；album 集成测试通过 | verified | 本机执行 |
+| F21 | 时长展示改为 ffprobe 原时长（Wet&Wild 182.6s=3:02），trimmed 单独保留 | verified | 实测 + 测试断言 |
+| F22 | /api/songbpm-url 曾因 querySongBPMByUrl 未导出而失败，已修复（128 BPM / A minor） | verified | 实跑端点 |
+| F23 | 网易云专辑搜索标题排名修复：Louder, Please（评论413/收藏9995）优先于 Deluxe 版 | verified | 实跑 /api/research/chinese |
+| F24 | MusicBrainz release-group 封面 + /api/proxy-image 双通道（直连→代理） | verified | 实跑：archive.org 封面 200 |
+| F25 | 版本升至 3.5.0（package.json / Python / 横幅同步） | verified | 代码核查 |
 
 ## 未验证 / 待用户提供
 
