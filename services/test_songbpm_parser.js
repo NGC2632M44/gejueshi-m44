@@ -17,3 +17,9 @@ test("parses bpm 128 and key A minor from the real songbpm page", () => {
   assert.equal(parsed.bpm, 128);
   assert.equal(parsed.key, "A minor");
 });
+
+
+test("querySongBPMByUrl is exported (endpoint import regression)", async () => {
+  const mod = await import("./mir-cross-ref.js");
+  assert.equal(typeof mod.querySongBPMByUrl, "function");
+});

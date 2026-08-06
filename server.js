@@ -9,6 +9,7 @@ import { researchAlbum, searchNetease, getNeteaseDetail, getNeteaseAlbumComments
 import { fullAnalysis, generateListeningGuide, buildScoringPrompt, extractPlatformRatings, calcHeatScore, crossReference, reverseKeyFromTab, assessKeyReliability, buildAlbumCardData } from "./services/audio-analyzer.js";
 import { mirCrossReference } from "./services/mir-cross-ref.js";
 import { callAI, getEffectiveSettings, maskApiKey, readSettings, writeSettings } from "./services/ai.js";
+import { proxiedFetch } from "./services/proxy-fetch.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -368,23 +369,21 @@ app.post("/api/card/v4", async (req, res) => {
 
   // 计算热度星级
   const heatData = cardData.heat || {};
-  const heatScore = calcHeatScore({
-    netease_comments: heatData.netease_comments || 0,
-    qq_music_comments: heatData.qq_music_comments || 0,
-    lastfm_listeners: heatData.lastfm_listeners || 0,
-  });
+  const heatScore = calcHeatScore(heatData);
   cardData.heatScore = heatScore;
+  cardData.heat = heatData;
   cardData._apiBase = `${req.protocol}://${req.get("host")}`;
+  // 远程封面统一走本机图片代理（直连失败会经 GEJUESHI_PROXY_URL）
+  if (cardData.coverUrl && /^https?:\/\//.test(cardData.coverUrl)) {
+    cardData.coverUrl = `${cardData._apiBase}/api/proxy-image?url=${encodeURIComponent(cardData.coverUrl)}`;
+  }
 
   // 封面转 base64：彻底消除跨域问题（预览 + html2canvas 导出均可靠）
   if (cardData.coverUrl && /^https?:\/\//.test(cardData.coverUrl)) {
     try {
-      const { HttpsProxyAgent } = await import("https-proxy-agent");
-      const agent = new HttpsProxyAgent(process.env.GEJUESHI_PROXY_URL || "http://127.0.0.1:1001");
-      const imgRes = await fetch(cardData.coverUrl, {
+      const imgRes = await proxiedFetch(cardData.coverUrl, {
         signal: AbortSignal.timeout(6000),
         headers: { "User-Agent": "Mozilla/5.0" },
-        agent,
       });
       if (imgRes.ok) {
         const buf = Buffer.from(await imgRes.arrayBuffer());
@@ -512,55 +511,66 @@ app.get("/api/research/chinese", async (req, res) => {
   const start = Date.now();
 
   try {
-    const [neteaseSong, neteaseAlbum, qq] = await Promise.allSettled([
-      (async () => {
-        // 首先搜索专辑获取专辑级数据（评论数/封面），不是第一首歌
-        const albumSearch = await searchNetease(q, "album");
-        if (albumSearch?.results?.length) {
-          const album = albumSearch.results[0];
-          const detail = await getNeteaseDetail(album.id, "album");
-          return {
-            id: album.id, name: album.name, artist: album.artist,
-            picUrl: album.picUrl, commentCount: detail?.commentCount || 0,
-            subCount: detail?.subCount || 0, isAlbum: true,
-          };
-        }
-        // 回退: 单曲搜索
-        const search = await searchNetease(q, "song");
-        if (!search?.results?.length) return null;
-        const top = search.results[0];
-        const detail = await getNeteaseDetail(top.id, "song");
+    // 专辑级：候选列表 + 评论/收藏数（标题精确匹配优先，Deluxe/Bonus 扣分）
+    let neteaseAlbum = null;
+    const albumSearch = await searchNetease(q, "album");
+    if (albumSearch?.results?.length) {
+      const details = await Promise.all(albumSearch.results.slice(0, 5).map(async (al) => {
+        const d = await getNeteaseDetail(al.id, "album");
         return {
-          id: top.id, name: top.name, artists: top.artists,
-          album: top.album, commentCount: detail?.commentCount || 0,
-          playCount: detail?.playCount || 0, isAlbum: false,
+          id: al.id, name: al.name, artist: al.artist,
+          picUrl: al.picUrl || null,
+          commentCount: d?.commentCount ?? null,
+          subCount: d?.subCount ?? null,
+          shareCount: d?.shareCount ?? null,
+          publishTime: al.publishTime || null,
         };
-      })(),
-      (async () => {
-        const album = await getNeteaseAlbumComments(q);
-        return album; // { id, name, artist, commentCount }
-      })(),
-      (async () => {
-        const search = await searchQQMusic(q);
-        if (!search?.results?.length) return null;
-        const top = search.results[0];
-        const comments = await getQQMusicComments(top.mid);
-        return {
-          id: top.id, mid: top.mid, name: top.name, artists: top.artists,
-          album: top.album, commentCount: comments || 0,
-        };
-      })(),
-    ]);
+      }));
+      const picked = details.find((d) => !/(deluxe|bonus|expanded|super\s*deluxe)/i.test(d.name || "")) || details[0];
+      neteaseAlbum = { ...picked, isAlbum: true, candidates: details };
+    }
 
-    const result = {
-      netease: neteaseSong.value,
-      neteaseAlbum: neteaseAlbum.value,
-      qq: qq.value,
+    // 单曲级：单曲评论数 + 所属专辑评论/收藏数
+    let neteaseSong = null;
+    const songSearch = await searchNetease(q, "song");
+    if (songSearch?.results?.length) {
+      const top = songSearch.results[0];
+      const [songDetail, songAlbumDetail] = await Promise.all([
+        getNeteaseDetail(top.id, "song"),
+        top.albumId ? getNeteaseDetail(top.albumId, "album") : Promise.resolve(null),
+      ]);
+      neteaseSong = {
+        id: top.id, name: top.name, artists: top.artists,
+        album: top.album, albumId: top.albumId,
+        commentCount: songDetail?.commentCount ?? null,
+        albumCommentCount: songAlbumDetail?.commentCount ?? null,
+        albumSubCount: songAlbumDetail?.subCount ?? null,
+        playCount: top.popular || null,
+      };
+    }
+
+    // QQ 音乐单曲评论（接口失败返回 null，不伪装成 0）
+    let qq = null;
+    const qqSearch = await searchQQMusic(q);
+    if (qqSearch?.results?.length) {
+      const topQ = qqSearch.results[0];
+      const comments = await getQQMusicComments(topQ.mid);
+      qq = {
+        id: topQ.id, mid: topQ.mid, name: topQ.name,
+        artists: topQ.artists, album: topQ.album,
+        commentCount: comments ?? null,
+      };
+    }
+
+    console.log(`✅ 中国平台搜索完成 (${Date.now() - start}ms) | 网易云专辑:${neteaseAlbum ? "OK" : "N/A"} 单曲:${neteaseSong ? "OK" : "N/A"} QQ:${qq ? "OK" : "N/A"}`);
+    res.json({
+      success: true,
+      netease: neteaseAlbum,
+      neteaseAlbum,
+      neteaseSong,
+      qq,
       elapsed_ms: Date.now() - start,
-    };
-
-    console.log(`✅ 中国平台搜索完成 (${Date.now() - start}ms) | 网易云:${neteaseSong.value ? "OK" : "N/A"} 专辑:${neteaseAlbum.value ? "OK" : "N/A"} QQ:${qq.value ? "OK" : "N/A"}`);
-    res.json({ success: true, ...result });
+    });
   } catch (err) {
     console.error(`❌ 中国平台搜索失败: ${err.message}`);
     res.status(500).json({ success: false, error: err.message });
@@ -694,20 +704,25 @@ app.get("/api/proxy-image", async (req, res) => {
   if (!url || !url.startsWith("http")) {
     return res.status(400).json({ error: "invalid url" });
   }
-  try {
-    const imgRes = await fetch(url, {
-      signal: AbortSignal.timeout(8000),
-      headers: { "User-Agent": "Mozilla/5.0" },
-    });
-    if (!imgRes.ok) return res.status(502).end();
-    const contentType = imgRes.headers.get("content-type") || "image/jpeg";
-    const buffer = Buffer.from(await imgRes.arrayBuffer());
-    res.setHeader("Content-Type", contentType);
-    res.setHeader("Cache-Control", "public, max-age=86400");
-    res.send(buffer);
-  } catch (e) {
-    res.status(502).end();
+  const attempts = [
+    () => fetch(url, { signal: AbortSignal.timeout(10000), headers: { "User-Agent": "Mozilla/5.0" } }),
+    () => proxiedFetch(url, { signal: AbortSignal.timeout(10000), headers: { "User-Agent": "Mozilla/5.0" } }),
+  ];
+  for (const attempt of attempts) {
+    try {
+      const imgRes = await attempt();
+      if (!imgRes.ok) continue;
+      const contentType = imgRes.headers.get("content-type") || "image/jpeg";
+      const buffer = Buffer.from(await imgRes.arrayBuffer());
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      res.send(buffer);
+      return;
+    } catch (_) {
+      // 尝试下一个通道
+    }
   }
+  res.status(502).end();
 });
 
 // ═══════════════════════════════════════════════════
@@ -717,12 +732,10 @@ app.get("/api/song-lookup", async (req, res) => {
   const q = (req.query.q || "").trim();
   if (!q) return res.status(400).json({ error: "请输入歌曲名+艺术家" });
   try {
-    const { HttpsProxyAgent } = await import("https-proxy-agent");
-    const agent = new HttpsProxyAgent(process.env.GEJUESHI_PROXY_URL || "http://127.0.0.1:1001");
     const mbUrl = `https://musicbrainz.org/ws/2/recording/?query=${encodeURIComponent(q)}&fmt=json&limit=3`;
-    const mbRes = await fetch(mbUrl, {
+    const mbRes = await proxiedFetch(mbUrl, {
       headers: { "User-Agent": "Gejueshi/1.0 (Music Research; +http://localhost:3001)" },
-      agent, signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(8000),
     });
     if (!mbRes.ok) return res.json({ success: false, error: `MusicBrainz ${mbRes.status}` });
     const mbData = await mbRes.json();
@@ -761,12 +774,10 @@ app.get("/api/mir-lookup", async (req, res) => {
   // 先试 MusicBrainz
   let mbResult = null;
   try {
-    const { HttpsProxyAgent } = await import("https-proxy-agent");
-    const agent = new HttpsProxyAgent(process.env.GEJUESHI_PROXY_URL || "http://127.0.0.1:1001");
     const mbUrl = `https://musicbrainz.org/ws/2/recording/?query=${encodeURIComponent(q)}&fmt=json&limit=2`;
-    const mbRes = await fetch(mbUrl, {
+    const mbRes = await proxiedFetch(mbUrl, {
       headers: { "User-Agent": "Gejueshi/3.2 (Music Research; +http://localhost:3001)" },
-      agent, signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(8000),
     });
     if (mbRes.ok) {
       const mbData = await mbRes.json();

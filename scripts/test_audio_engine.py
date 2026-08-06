@@ -15,7 +15,7 @@ AUDIO = ROOT / "audio"
 MODULE_PATH = ROOT / "scripts" / "analyze_audio.py"
 
 CAMERA = AUDIO / "Charli xcx - Camera - YouTube.mp3"          # truth: 126 BPM / B major
-WET_WILD = AUDIO / "Rose Gray - Wet &Wild - YouTube.mp3"       # truth: 127-128 BPM / A minor
+WET_WILD = AUDIO / "Rose Gray - Wet & Wild - YouTube.mp3"      # truth: 127-128 BPM / A minor
 REAL_MP3 = AUDIO / "Look-at-Her-Face-YouTube.mp3"
 CAMERA_WAV = AUDIO / "_camera_test.wav"
 
@@ -79,6 +79,9 @@ def test_cli_camera_bpm_container_warning_and_json_types():
     result = _run_cli(CAMERA)
     assert result["success"] is True
     assert 124 <= result["bpm"] <= 128, f"Camera BPM {result['bpm']} != 126"
+    # 时长：展示原文件时长（ffprobe 151.48s），裁剪后时长单独保留
+    assert 150 <= result["duration_seconds"] <= 153, f"Camera duration {result['duration_seconds']}"
+    assert result["trimmed_duration_seconds"] < result["duration_seconds"]
     assert result["audio_meta"]["container"] == "webm/mkv"
     assert result["audio_meta"]["is_fake_mp3"] is True
     assert result["audio_meta"]["codec"] == "opus"
@@ -102,3 +105,6 @@ def test_cli_wet_wild_bpm():
     assert result["success"] is True
     assert 126 <= result["bpm"] <= 130, f"Wet&Wild BPM {result['bpm']} != 127-128"
     assert result["audio_meta"]["is_fake_mp3"] is True
+    # 官方时长 3:02 = 182s；文件 ffprobe 为 182.6s
+    assert 180.5 <= result["duration_seconds"] <= 184.5, f"Wet&Wild duration {result['duration_seconds']}"
+    assert result["trimmed_duration_seconds"] < result["duration_seconds"]

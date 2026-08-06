@@ -328,23 +328,29 @@ details.manual .tip{font:11px/1.7 var(--f-sans);color:var(--ink-3);margin:10px 0
           <button class="btn-xs" id="btn-cover-apply" onclick="applyManualCover()">应用</button>
           <button class="btn-xs" id="btn-cover-reset" onclick="resetManualCover()" style="display:none">重置为自动</button>
         </div>
+        <div class="cover-candidates" id="cover-candidates" style="display:none;margin-top:10px"></div>
         <details class="manual">
-          <summary>手动平台数据（RYM / AOTY / Discogs / QQ）</summary>
+          <summary>手动平台数据（RYM / AOTY / Discogs / QQ / Spotify / Apple / YouTube）</summary>
           <div class="inner">
-            <div class="tip">RYM 被 Cloudflare 拦截无法自动抓取，请打开 rateyourmusic.com 对照填写；留空则跳过。</div>
+            <div class="tip">接口找不到的平台请点 ↗ 手动搜索并填写；留空表示“无此维度数据”，不会当作 0 参与评分。</div>
             <div class="row">
               <div class="field"><label>RYM 评分 /5</label><input type="text" id="plat-rym" placeholder="3.88"></div>
-              <div class="field"><label>评分人数</label><input type="text" id="plat-rym-count" placeholder="1500"></div>
+              <div class="field"><label>评分人数 <a href="#" onclick="openPlatformSearch('https://rateyourmusic.com/search?searchterm=')">↗</a></label><input type="text" id="plat-rym-count" placeholder="1500"></div>
               <div class="field"><label>RYM 流派</label><input type="text" id="plat-rym-genres" placeholder="Indie Rock, Garage Rock"></div>
             </div>
             <div class="row">
-              <div class="field"><label>AOTY 用户 /100</label><input type="text" id="plat-aoty" placeholder="85"></div>
+              <div class="field"><label>AOTY 用户 /100 <a href="#" onclick="openPlatformSearch('https://www.albumoftheyear.org/search.php?q=')">↗</a></label><input type="text" id="plat-aoty" placeholder="85"></div>
               <div class="field"><label>AOTY 乐评 /100</label><input type="text" id="plat-aoty-critic" placeholder="76"></div>
-              <div class="field"><label>Discogs 评分 /5</label><input type="text" id="plat-discogs" placeholder="4.2"></div>
+              <div class="field"><label>Discogs 评分 /5 <a href="#" onclick="openPlatformSearch('https://www.discogs.com/search/?q=')">↗</a></label><input type="text" id="plat-discogs" placeholder="4.2"></div>
             </div>
             <div class="row">
-              <div class="field"><label>QQ音乐 评分 /10</label><input type="text" id="plat-qq" placeholder="8.5"></div>
+              <div class="field"><label>QQ音乐 评分 /10 <a href="#" onclick="openPlatformSearch('https://y.qq.com/n/ryqq/search?w=')">↗</a></label><input type="text" id="plat-qq" placeholder="8.5"></div>
               <div class="field"><label>QQ音乐 评论数</label><input type="text" id="plat-qq-comments" placeholder="133"></div>
+            </div>
+            <div class="row">
+              <div class="field"><label>Spotify 热度 /100 <a href="#" onclick="openPlatformSearch('https://open.spotify.com/search/')">↗</a></label><input type="text" id="plat-spotify" placeholder="80"></div>
+              <div class="field"><label>Apple Music /100 <a href="#" onclick="openPlatformSearch('https://music.apple.com/us/search?term=')">↗</a></label><input type="text" id="plat-apple" placeholder="—"></div>
+              <div class="field"><label>YouTube 播放量 <a href="#" onclick="openPlatformSearch('https://www.youtube.com/results?search_query=')">↗</a></label><input type="text" id="plat-youtube" placeholder="120000"></div>
             </div>
           </div>
         </details>
@@ -473,9 +479,10 @@ const DRAFT_FIELDS = [
   "plat-rym", "plat-rym-count", "plat-rym-genres",
   "plat-aoty", "plat-aoty-critic", "plat-discogs",
   "plat-qq", "plat-qq-comments",
+  "plat-spotify", "plat-apple", "plat-youtube",
   "note-arrangement", "note-performance", "note-production",
   "note-highlight", "note-similar", "note-lyrics",
-  "meta-artist", "meta-title", "meta-year", "meta-label", "meta-genre",
+  "meta-artist", "meta-title", "meta-year", "meta-label", "meta-genre", "meta-album",
   "cover-url", "lyrics-text", "v-bpm", "v-key", "v-duration",
 ];
 
@@ -943,9 +950,11 @@ async function runResearch() {
     // 自动填充元数据
     if (agg.artist && !$("meta-artist").value) $("meta-artist").value = agg.artist;
     if (agg.title && !$("meta-title").value) $("meta-title").value = agg.title;
+    if (agg.title && !$("meta-album").value) $("meta-album").value = agg.title; // 专辑名默认带出
     if (agg.date && !$("meta-year").value) $("meta-year").value = agg.date.slice(0,4);
     if (agg.labels && agg.labels.length && !$("meta-label").value) $("meta-label").value = agg.labels[0];
     if (agg.tags && agg.tags.length && !$("meta-genre").value) $("meta-genre").value = agg.tags.slice(0,4).join(", ");
+    if (agg.albumCandidates) window._albumCandidates = (window._albumCandidates || []).concat(agg.albumCandidates);
     saveDraft();
 
     const n = Object.keys(platformRatings).length;
@@ -956,23 +965,41 @@ async function runResearch() {
     try {
       const cnRes = await fetch(`${API}/api/research/chinese?q=${encodeURIComponent(query)}`);
       const cn = await cnRes.json();
-      // 用网易云数据: 优先专辑数据（评论数来自专辑搜索），fallback 到单曲
-      const neData = (cn.netease && cn.netease.isAlbum) ? cn.netease : cn.neteaseAlbum;
-      if (neData || cn.netease) {
-        const neComments = (neData && neData.commentCount) || (cn.netease && cn.netease.commentCount) || 0;
-        strip.innerHTML += badge("网易云评论", neComments.toLocaleString(), "条");
-        if (neComments) window._heatData.netease_comments = neComments;
-        if (cn.netease && cn.netease.playCount) window._heatData.netease_playcount = cn.netease.playCount;
+      // 网易云：专辑与单曲数据分开，缺失即不计入（不当作 0）
+      const neAlbum = cn.netease;
+      const neSong = cn.neteaseSong;
+      if (neAlbum && neAlbum.commentCount != null) {
+        window._heatData.netease_album_comments = neAlbum.commentCount;
+        strip.innerHTML += badge("网易云专辑评论", neAlbum.commentCount.toLocaleString(), "条");
       }
-      // 用网易云专辑封面补充或替换自动封面
+      if (neAlbum && neAlbum.subCount != null) {
+        window._heatData.netease_album_collections = neAlbum.subCount;
+        strip.innerHTML += badge("网易云专辑收藏", neAlbum.subCount.toLocaleString(), "次");
+      }
+      if (neSong && neSong.commentCount != null) {
+        window._heatData.netease_song_comments = neSong.commentCount;
+        strip.innerHTML += badge("网易云单曲评论", neSong.commentCount.toLocaleString(), "条");
+      }
+      if (neSong && neSong.albumCommentCount != null) window._heatData.netease_song_album_comments = neSong.albumCommentCount;
+      if (neSong && neSong.albumSubCount != null) window._heatData.netease_song_album_collections = neSong.albumSubCount;
+      if (cn.qq && cn.qq.commentCount != null) {
+        window._heatData.qq_music_comments = cn.qq.commentCount;
+        strip.innerHTML += badge("QQ评论", cn.qq.commentCount.toLocaleString(), "条");
+      }
+      // 封面候选（网易云主专辑 + 候选）
+      if (neAlbum && neAlbum.candidates) {
+        window._albumCandidates = (window._albumCandidates || []).concat(
+          neAlbum.candidates.map(c => ({ source: "网易云", title: c.name, artist: c.artist, artwork: c.picUrl, url: `https://music.163.com/#/album?id=${c.id}`, commentCount: c.commentCount, subCount: c.subCount }))
+        );
+      }
+      renderCoverCandidates();
+      // 用网易云主专辑封面补充自动封面（仅当 MusicBrainz/iTunes 都没有时）
       if (!window._originalCoverUrl || !agg.artwork) {
-        const cnArtwork = (cn.neteaseAlbum && cn.neteaseAlbum.picUrl)
-          || (cn.netease && cn.netease.picUrl)
-          || null;
+        const cnArtwork = (neAlbum && neAlbum.picUrl) || null;
         if (cnArtwork) {
           window._originalCoverUrl = cnArtwork;
           updateCoverDisplay(cnArtwork, agg);
-          console.log("🖼️ 封面来自网易云专辑搜索");
+          console.log("🖼️ 封面来自网易云主专辑");
         }
       }
     } catch (e) { console.log("Chinese platform fetch failed:", e.message); }
@@ -989,10 +1016,60 @@ async function runResearch() {
 }
 
 // ============ 封面管理 ============
+function proxiedCoverUrl(url) {
+  if (!url) return "";
+  return /^https?:\/\//.test(url) ? `${API}/api/proxy-image?url=${encodeURIComponent(url)}` : url;
+}
+
+function openPlatformSearch(baseUrl) {
+  const q = [$("meta-artist").value.trim(), $("meta-title").value.trim()].filter(Boolean).join(" ");
+  window.open(baseUrl + encodeURIComponent(q), "_blank");
+}
+
+function renderCoverCandidates() {
+  const list = window._albumCandidates || [];
+  const box = $("cover-candidates");
+  if (!list.length) { box.style.display = "none"; return; }
+  const seen = new Set();
+  const uniq = list.filter(c => {
+    const key = (c.artwork || c.title || "");
+    if (seen.has(key)) return false;
+    seen.add(key); return true;
+  }).slice(0, 10);
+  box.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;align-items:center";
+  box.innerHTML = '<span style="font:10px var(--f-mono);color:var(--ink-3)">候选封面:</span>' +
+    uniq.map(c => {
+      const art = c.artwork || "";
+      return `<button class="cover-cand" title="${escapeHTML((c.source||"") + " " + (c.title||""))}" style="border:1px solid var(--line);border-radius:6px;padding:2px;background:var(--bg);cursor:pointer" onclick="pickCoverCandidate('${escapeHTML(c.artwork || "")}','${escapeHTML(c.title || "")}')">` +
+        (art ? `<img src="${proxiedCoverUrl(art)}" style="width:48px;height:48px;object-fit:cover;border-radius:4px;display:block">` : `<span style="display:flex;width:48px;height:48px;align-items:center;justify-content:center;font:9px var(--f-mono);color:var(--ink-3)">${escapeHTML((c.source||"?").slice(0,4))}</span>`) +
+        `</button>`;
+    }).join("");
+}
+
+function pickCoverCandidate(artworkUrl, title) {
+  if (!artworkUrl) { toast("该候选没有封面图，请打开官网链接确认", "err"); return; }
+  window._manualCoverUrl = artworkUrl;
+  $("cover-img").src = proxiedCoverUrl(artworkUrl);
+  $("cover-preview").style.display = "flex";
+  if (title && !$("meta-album").value) $("meta-album").value = title;
+  $("btn-cover-apply").classList.add("used");
+  updateCoverButtons();
+  saveDraft();
+  toast("已选用候选封面" + (title ? "：「" + title + "」" : ""), "ok");
+}
+
+function guessSearchQueryFromFilename(name) {
+  return (name || "")
+    .replace(/\.[^.]+$/, "")
+    .replace(/\s*[-–—]\s*(YouTube|Official|Audio|Lyrics|Video|MV|Official Audio).*$/i, "")
+    .replace(/[-_]+/g, " ")
+    .trim();
+}
+
 function updateCoverDisplay(artworkUrl, agg) {
   if (artworkUrl) {
     $("cover-preview").style.display = "flex";
-    $("cover-img").src = artworkUrl;
+    $("cover-img").src = proxiedCoverUrl(artworkUrl);
     $("cover-info").innerHTML = `<b>${escapeHTML((agg && agg.title) || "")}</b><br>${escapeHTML((agg && agg.artist) || "")} · ${escapeHTML(((agg && agg.labels) || [])[0] || "")}<br>封面将用于卡片背景`;
   } else {
     $("cover-preview").style.display = "none";
@@ -1035,7 +1112,7 @@ function applyManualCover() {
     return;
   }
   window._manualCoverUrl = val;
-  $("cover-img").src = val;
+  $("cover-img").src = proxiedCoverUrl(val);
   $("cover-preview").style.display = "flex";
   $("btn-cover-apply").classList.add("used");
   updateCoverButtons();
@@ -1047,7 +1124,7 @@ function applyManualCoverSilent(url) {
   // 页面恢复时静默应用，不弹 toast
   window._manualCoverUrl = url;
   $("cover-url").value = url;
-  $("cover-img").src = url;
+  $("cover-img").src = proxiedCoverUrl(url);
   $("cover-preview").style.display = "flex";
   $("btn-cover-apply").classList.add("used");
   updateCoverButtons();
@@ -1058,7 +1135,7 @@ function resetManualCover() {
   $("cover-url").value = "";
   $("btn-cover-apply").classList.remove("used");
   if (window._originalCoverUrl) {
-    $("cover-img").src = window._originalCoverUrl;
+    $("cover-img").src = proxiedCoverUrl(window._originalCoverUrl);
     $("cover-preview").style.display = "flex";
   } else {
     $("cover-preview").style.display = "none";
@@ -1103,12 +1180,18 @@ async function runScoring() {
   const discogsVal = parseFloat($("plat-discogs").value);
   const qqVal = parseFloat($("plat-qq").value);
   const qqComments = parseInt($("plat-qq-comments").value) || null;
+  const spotifyVal = parseInt($("plat-spotify").value) || null;
+  const appleVal = parseInt($("plat-apple").value) || null;
+  const youtubeVal = parseInt($("plat-youtube").value) || null;
 
   if (rymVal) pr.rym = {score: rymVal, max: 5, rating_count: rymCount};
   if (aotyVal) pr.aoty = {score: aotyVal, max: 100};
   if (aotyCritic) pr.aoty_critic = {score: aotyCritic, max: 100};
   if (discogsVal) pr.discogs = {score: discogsVal, max: 5};
   if (qqVal) pr.qq = {score: qqVal, max: 10};
+  if (spotifyVal != null) { pr.spotify = {score: spotifyVal, max: 100}; window._heatData.spotify_popularity = spotifyVal; }
+  if (appleVal != null) { pr.apple = {score: appleVal, max: 100}; window._heatData.applemusic_rating = appleVal; }
+  if (youtubeVal != null) { pr.youtube = {score: youtubeVal}; window._heatData.youtube_views = youtubeVal; }
 
   if (qqComments) window._heatData.qq_music_comments = qqComments;
   if (rymCount) window._heatData.rym_rating_count = rymCount;
@@ -1216,11 +1299,7 @@ async function runScoring() {
         tags: finalScores.tags || [],
         coverUrl: getActiveCoverUrl(),
         summary: (researchData && researchData.aggregate && researchData.aggregate.summary) || "",
-        heat: {
-          netease_comments: (window._heatData && window._heatData.netease_comments) || 0,
-          qq_music_comments: (window._heatData && window._heatData.qq_music_comments) || 0,
-          lastfm_listeners: (window._heatData && window._heatData.lastfm_listeners) || 0,
-        },
+        heat: window._heatData || {},
         note: `M44 Sound Anatomy · ${new Date().toLocaleDateString('zh-CN').replace(/\//g,'-')}`,
       })
     });
@@ -1313,7 +1392,13 @@ async function loadAudioList() {
 }
 function onAudioSelect() {
   const v = $("audio-select").value;
-  if (v) $("audio-path").value = v;
+  if (v) {
+    $("audio-path").value = v;
+    // 文件名不规范时自动给出联网检索名（可手动改，Step4 默认沿用）
+    if (!$("research-query").value.trim()) {
+      $("research-query").value = guessSearchQueryFromFilename(v.split("/").pop());
+    }
+  }
 }
 
 // ============ Album Mode ============

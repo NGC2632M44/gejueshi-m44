@@ -1387,6 +1387,12 @@ def analyze(filepath: str, deep: bool = False, output_path: Optional[str] = None
     # ── 容器识别 + ffprobe 真实元数据 (假 MP3 根因修复) ──
     container = _sniff_container(filepath)
     probe = _ffprobe_audio_meta(filepath)
+    original_duration = None
+    try:
+        if probe.get("duration"):
+            original_duration = float(probe["duration"])
+    except (TypeError, ValueError):
+        original_duration = None
 
     # ── 码率/容器警告 ──
     bitrate_warning = None
@@ -1611,7 +1617,8 @@ def analyze(filepath: str, deep: bool = False, output_path: Optional[str] = None
         "filepath": filepath,
         "filename": os.path.basename(filepath),
         "file_size_mb": file_size_mb,
-        "duration_seconds": round(duration, 1),
+        "duration_seconds": round(original_duration or duration, 1),
+        "trimmed_duration_seconds": round(duration, 1),
         "sample_rate": sr,
         "dc_offset": dc_offset,
 
@@ -1624,7 +1631,7 @@ def analyze(filepath: str, deep: bool = False, output_path: Optional[str] = None
         # 五维评分证据包（词/曲/编/唱/混）
         "evidence": _build_evidence(
             bpm_data, key_data, sonara_evidence, spectral, dynamics, stereo,
-            arrangement, duration, bitrate_warning,
+            arrangement, original_duration or duration, bitrate_warning,
         ),
 
         # 基础元数据

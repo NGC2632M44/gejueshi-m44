@@ -165,7 +165,13 @@ function parseWikiScoringTable(html) {
     const scoreMatch = ratingRaw.match(/(\d+\.?\d*)\s*\/\s*(\d+)/);
     if (scoreMatch) {
       const key = pubRaw.toLowerCase().replace(/[^a-z]/g, "");
-      scores[key] = { score: parseFloat(scoreMatch[1]), max: parseInt(scoreMatch[2]), publication: pubRaw };
+      const urlMatch = m[1].match(/href="([^"]+)"/);
+      scores[key] = {
+        score: parseFloat(scoreMatch[1]),
+        max: parseInt(scoreMatch[2]),
+        publication: pubRaw,
+        url: urlMatch ? (urlMatch[1].startsWith("http") ? urlMatch[1] : `https://en.wikipedia.org${urlMatch[1]}`) : undefined,
+      };
     }
   }
 
@@ -205,7 +211,17 @@ async function fetchMusicBrainz(query) {
   const rating=pick?.rating||p?.rating||null;
   const formats=[...new Set((pick?.media||[]).map(m=>m.format).filter(Boolean))];
   const st=p?.["secondary-types"]||[];let tl=p?.["primary-type"]||"Album";if(st.length)tl+=` (${st.join(", ")})`;
-  return{id:p.id,title:p.title,artists:artists.length?artists:undefined,date,labels:labels.length?labels:undefined,formats:formats.length?formats:undefined,tracks:tracks.length?tracks:undefined,trackCount:tracks.length,type:tl,tags:tags.length?tags:undefined,rating:rating?{score:rating["vote-average"],count:rating["vote-count"]}:undefined,url:`https://musicbrainz.org/release-group/${p.id}`,_score:best.score};
+  // 封面艺术：release-group 主封面（coverartarchive 307 → archive.org 图片本体；
+  // Node 直连 archive.org 不稳，因此只取 Location，由前端 /api/proxy-image 代理加载）
+  let artwork = null;
+  try {
+    const ca = await fetch(`https://coverartarchive.org/release-group/${p.id}/front`, {
+      redirect: "manual", signal: AbortSignal.timeout(T),
+    });
+    const loc = ca.headers.get("location");
+    if (loc) artwork = loc.startsWith("http") ? loc : `https:${loc}`;
+  } catch (_) {}
+  return{id:p.id,title:p.title,artists:artists.length?artists:undefined,date,labels:labels.length?labels:undefined,formats:formats.length?formats:undefined,tracks:tracks.length?tracks:undefined,trackCount:tracks.length,type:tl,tags:tags.length?tags:undefined,rating:rating?{score:rating["vote-average"],count:rating["vote-count"]}:undefined,artwork,url:`https://musicbrainz.org/release-group/${p.id}`,_score:best.score};
 }
 
 // ══════════════════════════════════════════════
@@ -217,10 +233,32 @@ async function fetchiTunes(query) {
   if(items.length<3)items=[...items,...((await(await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=album&attribute=albumTerm&limit=15&country=us`,{signal:AbortSignal.timeout(T)})).json())?.results||[])];
   const seen=new Set();items=items.filter(i=>{if(seen.has(i.collectionId))return false;seen.add(i.collectionId);return true;});
   if(!items.length)return null;
-  const qL=query.toLowerCase(),qW=qL.split(/\s+/).filter(w=>w.length>2);
-  const best=items.map(i=>{let s=(i.trackCount||0)*2;const n=(i.collectionName||"").toLowerCase();if(n===qL)s+=50;else if(qW.length>0&&qW.every(w=>n.includes(w)))s+=25;if(/ep\b|single/i.test(n))s-=20;if((i.trackCount||0)<4)s-=100;return{item:i,score:s};}).sort((a,b)=>b.score-a.score)[0].item;
+  const hiRes=(u)=>(u||"").replace(/\d+x\d+bb/,"3000x3000bb");
+  const ranked=items.map(i=>{let s=(i.trackCount||0)*2+rankTitleScore(i.collectionName||i.collectionCensoredName,query);if(/ep\b|single/i.test(i.collectionName||""))s-=20;if((i.trackCount||0)<4)s-=100;return{item:i,score:s};}).sort((a,b)=>b.score-a.score);
+  const best=ranked[0].item;
   const songs=((await(await fetch(`https://itunes.apple.com/lookup?id=${best.collectionId}&entity=song&country=us`,{signal:AbortSignal.timeout(T)})).json())?.results||[]).filter(r=>r.wrapperType==="track");
-  return{title:best.collectionName||best.collectionCensoredName,artist:best.artistName,artwork:best.artworkUrl100?.replace("100x100bb","3000x3000bb")||null,genre:best.primaryGenreName,genres:[best.primaryGenreName,...(best.genreNames?.filter(g=>g!==best.primaryGenreName)||[])],releaseDate:best.releaseDate?.split("T")[0]||null,trackCount:best.trackCount||0,price:best.collectionPrice?`$${best.collectionPrice}`:null,url:best.collectionViewUrl,tracks:songs.map(t=>({number:t.trackNumber,title:t.trackName,length:t.trackTimeMillis?fmtD(t.trackTimeMillis):null})),copyright:best.copyright||null};
+  return{
+    title:best.collectionName||best.collectionCensoredName,
+    artist:best.artistName,
+    artwork:hiRes(best.artworkUrl100||best.artworkUrl60)||null,
+    genre:best.primaryGenreName,
+    genres:[best.primaryGenreName,...(best.genreNames?.filter(g=>g!==best.primaryGenreName)||[])],
+    releaseDate:best.releaseDate?.split("T")[0]||null,
+    trackCount:best.trackCount||0,
+    price:best.collectionPrice?`$${best.collectionPrice}`:null,
+    url:best.collectionViewUrl,
+    tracks:songs.map(t=>({number:t.trackNumber,title:t.trackName,length:t.trackTimeMillis?fmtD(t.trackTimeMillis):null})),
+    copyright:best.copyright||null,
+    candidates:ranked.slice(0,8).map(r=>({
+      title:r.item.collectionName||r.item.collectionCensoredName,
+      artist:r.item.artistName,
+      artwork:hiRes(r.item.artworkUrl100||r.item.artworkUrl60)||null,
+      url:r.item.collectionViewUrl,
+      trackCount:r.item.trackCount||0,
+      releaseDate:r.item.releaseDate?.split("T")[0]||null,
+    })),
+    _score:ranked[0].score,
+  };
 }
 
 async function fetchLastfm(query,key) {
@@ -377,7 +415,11 @@ function buildAggregate(r) {
   a.formats=mb?.formats?.length?mb.formats:(dg?.results?.[0]?.format?[dg.results[0].format]:null);
   a.tracks=iMB?(mb?.tracks?.length?mb.tracks:it?.tracks):(it?.tracks?.length?it.tracks:mb?.tracks);
   a.tracks=a.tracks?.length?a.tracks:null;a.trackCount=a.tracks?.length||mb?.trackCount||it?.trackCount||null;
-  a.artwork=it?.artwork||dg?.results?.[0]?.coverImage||lf?.image||wp?.thumbnail||null;
+  // 封面优先级：MusicBrainz release-group 主封面（最接近“最流行版本”）> iTunes > Discogs > Last.fm > Wikipedia
+  a.artwork=mb?.artwork||it?.artwork||dg?.results?.[0]?.coverImage||lf?.image||wp?.thumbnail||null;
+  if (it?.candidates?.length) {
+    a.albumCandidates = it.candidates.map((c) => ({ source: "iTunes", ...c }));
+  }
   a.summary=wp?.extract||lf?.summary||null;
   if(rc?.text)a.reception={text:rc.text};
   if(ps?.text)a.personnel={text:ps.text};
@@ -413,6 +455,7 @@ function buildAggregate(r) {
       else if (key.includes("clash") && !parsedScores.clash) parsedScores.clash = {score:s.score,max:s.max};
       else if (key.includes("dork") && !parsedScores.dork) parsedScores.dork = {score:s.score,max:s.max};
       else if (key.includes("metacritic") && !parsedScores.metacritic) parsedScores.metacritic = {score:s.score,max:s.max};
+      else if (!parsedScores[key] && key.length > 2) parsedScores[key] = { score: s.score, max: s.max, publication: s.publication, source: "AnyDecentMusic" };
     }
     // AnyDecentMusic 聚合评分
     if (adm.overall != null) parsedScores.anydecentmusic = { score: adm.overall, max: 10 };
@@ -469,6 +512,26 @@ function discogsYear(r) {
 
 function fmtD(ms){const s=Math.floor(ms/1000);return`${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;}
 
+// 标题匹配打分：精确匹配 > 包含 > 关键词；编辑版（deluxe/bonus 等）扣分
+export function normTitle(s) {
+  return (s || "").toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, "").trim();
+}
+
+export function rankTitleScore(name, query) {
+  const n = normTitle(name);
+  const q = normTitle(query);
+  if (!n || !q) return 0;
+  let s = 0;
+  if (n === q) s += 60;
+  else if (n.includes(q) || q.includes(n)) s += 30;
+  else {
+    const qW = q.split(/\s+/).filter((w) => w.length > 2);
+    if (qW.length && qW.every((w) => n.includes(w))) s += 15;
+  }
+  if (/(deluxe|bonus|expanded|super\s*deluxe|live|remix|instrumental|karaoke|anniversary|remaster|acoustic)/i.test(name)) s -= 25;
+  return s;
+}
+
 // ══════════════════════════════════════════════
 //  中国平台搜索 — NetEase Cloud Music + QQ音乐
 // ══════════════════════════════════════════════
@@ -507,7 +570,12 @@ export async function searchNetease(query, type = "song") {
           duration: s.duration, popular: s.popular || s.pop || 0,
         }));
 
-    return { type, results, count: results.length };
+    // 标题匹配优先 + 热度排序（网易云默认结果经常把 Deluxe/翻唱放前面）
+    const ranked = results
+      .map((r) => ({ ...r, _score: (r.popular || 0) + rankTitleScore(r.name, query) }))
+      .sort((a, b) => b._score - a._score);
+
+    return { type, results: ranked, count: ranked.length };
   } catch (e) {
     return { type, results: [], error: e.message };
   }

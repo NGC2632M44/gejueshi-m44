@@ -9,6 +9,8 @@
 //   1. 同时查询 2-3 个源
 //   2. ≥2 个结果一致 (BPM误差≤2, 调名一致) → 候选值
 //   3. 外部多数派可覆盖本地算法结果
+
+import { proxiedFetch } from "./proxy-fetch.js";
 //   4. 缓存: 同一查询 1 小时内不重复请求
 
 import { crossReference, assessKeyReliability } from "./audio-analyzer.js";
@@ -246,10 +248,10 @@ export function parseSongBPMHtml(html) {
  * SongBPM 直接页面抓取 (需要完整 URL，如 https://songbpm.com/@rose-gray/wet-wild-njwcb)
  * API 搜索已死 (404) + POST 搜索被 CSRF 保护 (403)，只能通过已知 URL 直接访问
  */
-async function querySongBPMByUrl(songbpmUrl) {
+export async function querySongBPMByUrl(songbpmUrl) {
   try {
     const res = await fetch(songbpmUrl, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; Gejueshi-MIR/3.3; +http://localhost:3001)" },
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36" },
       signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) return null;
@@ -269,12 +271,10 @@ async function querySongBPM(query) { return null; }
  */
 async function queryMusicBrainz(query) {
   try {
-    const { HttpsProxyAgent } = await import("https-proxy-agent");
-    const agent = new HttpsProxyAgent(process.env.GEJUESHI_PROXY_URL || "http://127.0.0.1:1001");
     const url = `https://musicbrainz.org/ws/2/recording/?query=${encodeURIComponent(query)}&fmt=json&limit=2`;
-    const res = await fetch(url, {
+    const res = await proxiedFetch(url, {
       headers: { "User-Agent": "Gejueshi/3.2 (MIR Cross-Ref; +http://localhost:3001)" },
-      agent, signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return null;
     const data = await res.json();

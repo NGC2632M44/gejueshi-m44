@@ -368,6 +368,15 @@ export function buildScoringPrompt(audioFeatures, listeningAnswers = "", albumMe
     if (platformRatings.qq !== undefined && platformRatings.qq !== null) {
       prompts.push(`- **QQ音乐**: ${platformRatings.qq.score}/${platformRatings.qq.max || 10} — 华语主流听众评分`);
     }
+    if (platformRatings.spotify !== undefined && platformRatings.spotify !== null) {
+      prompts.push(`- **Spotify 热度**: ${platformRatings.spotify.score}/${platformRatings.spotify.max || 100} — 流媒体热度参考`);
+    }
+    if (platformRatings.apple !== undefined && platformRatings.apple !== null) {
+      prompts.push(`- **Apple Music**: ${platformRatings.apple.score}/${platformRatings.apple.max || 100} — 流媒体热度参考`);
+    }
+    if (platformRatings.youtube !== undefined && platformRatings.youtube !== null) {
+      prompts.push(`- **YouTube 播放**: ${formatNumber(platformRatings.youtube.score)} — 大众触达参考`);
+    }
     if (platformRatings.netease !== undefined && platformRatings.netease !== null) {
       prompts.push(`- **网易云音乐**: ${platformRatings.netease.score}/${platformRatings.netease.max || 10} — 华语独立/小众听众评分`);
     }
@@ -406,6 +415,14 @@ export function buildScoringPrompt(audioFeatures, listeningAnswers = "", albumMe
     if (heatData.billboard_peak) heatLines.push(`- Billboard 最高: #${heatData.billboard_peak} (${heatData.billboard_weeks || "?"}周)`);
     if (heatData.qq_music_comments) heatLines.push(`- QQ音乐 评论: ${formatNumber(heatData.qq_music_comments)}`);
     if (heatData.netease_comments) heatLines.push(`- 网易云 评论: ${formatNumber(heatData.netease_comments)}`);
+    if (heatData.netease_album_comments) heatLines.push(`- 网易云 专辑评论: ${formatNumber(heatData.netease_album_comments)}`);
+    if (heatData.netease_album_collections) heatLines.push(`- 网易云 专辑收藏: ${formatNumber(heatData.netease_album_collections)}`);
+    if (heatData.netease_song_comments) heatLines.push(`- 网易云 单曲评论: ${formatNumber(heatData.netease_song_comments)}`);
+    if (heatData.netease_song_album_comments) heatLines.push(`- 网易云 单曲所属专辑评论: ${formatNumber(heatData.netease_song_album_comments)}`);
+    if (heatData.netease_song_album_collections) heatLines.push(`- 网易云 单曲所属专辑收藏: ${formatNumber(heatData.netease_song_album_collections)}`);
+    if (heatData.spotify_popularity) heatLines.push(`- Spotify 热度: ${heatData.spotify_popularity}/100`);
+    if (heatData.applemusic_rating) heatLines.push(`- Apple Music 热度: ${heatData.applemusic_rating}/100`);
+    if (heatData.youtube_views) heatLines.push(`- YouTube 播放: ${formatNumber(heatData.youtube_views)}`);
     if (heatData.grammy_nominations || heatData.grammy_wins) heatLines.push(`- 格莱美: ${heatData.grammy_wins || 0}获奖 / ${heatData.grammy_nominations || 0}提名`);
     if (heatData.pitchfork_bnm) heatLines.push("- Pitchfork Best New Music ✓");
 
@@ -591,27 +608,56 @@ export function formatNumber(n) {
 // ── 热度星级 (1-5★) ──
 // 主要参考网易云评论数: ≥999 → 4★+, ≥10000 → 5★
 export function calcHeatScore(heat) {
-  if (!heat) return { stars: 0, label: "无数据" };
+  if (!heat) return { stars: 0, label: "无数据", sources: [] };
+  const isNum = (v) => typeof v === "number" && Number.isFinite(v);
+  const pick = (...keys) => keys.map((k) => heat[k]).find((v) => isNum(v) && v > 0) || 0;
 
-  const neComments = heat.netease_comments || 0;
-  const qqComments = heat.qq_music_comments || 0;
-  const listeners = heat.lastfm_listeners || 0;
+  // 多源热度：评论/收藏/听众/播放/评分人数 归一化到“等效评论数”
+  const neAlbumComments = pick("netease_album_comments", "netease_comments");
+  const neSongComments = pick("netease_song_comments");
+  const neAlbumCollections = pick("netease_album_collections");
+  const neSongAlbumComments = pick("netease_song_album_comments");
+  const neSongAlbumCollections = pick("netease_song_album_collections");
+  const qqComments = pick("qq_music_comments");
+  const rymCount = pick("rym_rating_count");
+  const listeners = pick("lastfm_listeners");
+  const spotify = pick("spotify_popularity");
+  const apple = pick("applemusic_rating");
+  const youtube = pick("youtube_views");
+  const discogs = pick("discogs_have") + pick("discogs_want");
 
-  // 核心指标: 网易云评论数
-  if (neComments >= 100000) return { stars: 5, label: "★★★★★" };
-  if (neComments >= 10000) return { stars: 5, label: "★★★★★" };
-  if (neComments >= 3000) return { stars: 4, label: "★★★★☆" };
-  if (neComments >= 999) return { stars: 4, label: "★★★★☆" };
-  if (neComments >= 300) return { stars: 3, label: "★★★☆☆" };
-  if (neComments >= 50) return { stars: 2, label: "★★☆☆☆" };
+  const contributors = [];
+  if (neAlbumComments) contributors.push(`网易云专辑评论 ${formatNumber(neAlbumComments)}`);
+  if (neSongComments) contributors.push(`网易云单曲评论 ${formatNumber(neSongComments)}`);
+  if (neAlbumCollections) contributors.push(`网易云收藏 ${formatNumber(neAlbumCollections)}`);
+  if (neSongAlbumComments) contributors.push(`单曲专辑评论 ${formatNumber(neSongAlbumComments)}`);
+  if (neSongAlbumCollections) contributors.push(`单曲专辑收藏 ${formatNumber(neSongAlbumCollections)}`);
+  if (qqComments) contributors.push(`QQ评论 ${formatNumber(qqComments)}`);
+  if (rymCount) contributors.push(`RYM ${formatNumber(rymCount)}人`);
+  if (listeners) contributors.push(`Last.fm ${formatNumber(listeners)}听众`);
+  if (spotify) contributors.push(`Spotify ${spotify}/100`);
+  if (apple) contributors.push(`Apple ${apple}/100`);
+  if (youtube) contributors.push(`YouTube ${formatNumber(youtube)}`);
+  if (discogs) contributors.push(`Discogs ${formatNumber(discogs)}`);
 
-  // 辅助: QQ音乐或Last.fm
-  const aux = Math.max(qqComments, listeners / 10);
-  if (aux >= 5000) return { stars: 4, label: "★★★★☆" };
-  if (aux >= 500) return { stars: 3, label: "★★★☆☆" };
-  if (aux >= 50) return { stars: 2, label: "★★☆☆☆" };
+  if (!contributors.length) return { stars: 0, label: "无数据", sources: [] };
 
-  return { stars: 1, label: "★☆☆☆☆" };
+  // 主指标：网易云（评论 + 收藏×0.5 + 单曲评论×2）
+  const main = neAlbumComments + neAlbumCollections * 0.5 + neSongComments * 2 + neSongAlbumComments + neSongAlbumCollections * 0.5;
+  // 辅助指标：其他平台等效值
+  const aux = Math.max(qqComments, rymCount * 3, listeners / 10, spotify * 30, apple * 30, youtube / 1000, discogs * 5);
+
+  let stars;
+  if (main >= 100000 || aux >= 100000) stars = 5;
+  else if (main >= 10000 || aux >= 10000) stars = 5;
+  else if (main >= 3000 || aux >= 3000) stars = 4;
+  else if (main >= 999 || aux >= 999) stars = 4;
+  else if (main >= 300 || aux >= 300) stars = 3;
+  else if (main >= 50 || aux >= 50) stars = 2;
+  else stars = 1;
+
+  const label = ["", "★☆☆☆☆", "★★☆☆☆", "★★★☆☆", "★★★★☆", "★★★★★"][stars];
+  return { stars, label, sources: contributors };
 }
 
 // ═══════════════════════════════════════════════════
