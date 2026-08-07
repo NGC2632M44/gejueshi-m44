@@ -101,3 +101,27 @@ test("sanitizeOneLiner treats mostly-English text as English even with a stray C
   assert.match(out, /chase/);
   assert.doesNotMatch(out, /stree$/);
 });
+
+
+test("sanitize keeps cross-song quotes that come from user notes", () => {
+  const scores = {
+    编: {
+      score: 15,
+      rationale: "宇多田光 DISTANCE 的背景和声被加速垫进来，原曲里这句「I wanna be with you」挂在哪句词后面，正好呼应 summer fling 主旨。",
+    },
+  };
+  const notes = "有时候垫的一层很萌的女声……这个和声在宇多田光的原曲里常常附着在“I wanna be with you”这句歌词后，也算是呼应summer fling主旨的一个小巧思吧";
+  sanitizeScores(scores, "当前歌曲的歌词里没有这句", notes);
+  assert.match(scores.编.rationale, /I wanna be with you/);
+  assert.match(scores.编.rationale, /DISTANCE/);
+  assert.match(scores.编.rationale, /summer fling/);
+});
+
+
+test("sanitize removes quotes not backed by lyrics or user notes", () => {
+  const scores = {
+    编: { score: 15, rationale: "引用「Some other song lyric」但不在当前歌词里。" },
+  };
+  sanitizeScores(scores, "当前歌词没有这句话", "");
+  assert.doesNotMatch(scores.编.rationale, /Some other song lyric/);
+});

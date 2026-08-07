@@ -454,6 +454,21 @@ details.manual .tip{font:11px/1.7 var(--f-sans);color:var(--ink-3);margin:10px 0
           </div>
         </div>
 
+        <div class="final-copy-editor" id="final-copy-editor" style="display:none;margin-top:14px;border:1px solid var(--gold);border-radius:10px;padding:12px 14px;background:rgba(201,162,77,.04)">
+          <div style="font:10px var(--f-mono);color:var(--gold);letter-spacing:2px;width:100%;margin-bottom:6px">📝 最终文案审阅（你有最终编辑权；不改也能直接生成）</div>
+          <div style="font:10px/1.6 var(--f-sans);color:var(--ink-2);margin-bottom:10px">以下是 AI 初稿（已过 AI 自查）。直接改这里就会成为卡片最终文字；你辛苦求证的采样/引用等事实若被 AI 漏掉，在这里补回来即可。</div>
+          <div id="copy-dims" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"></div>
+          <div class="row" style="margin-top:10px">
+            <div class="field" style="flex:2"><label>一句话总评（英文歌建议用英文，中文歌建议用中文）</label><input type="text" id="copy-oneliner" placeholder="AI 初稿"></div>
+            <div class="field" style="flex:1"><label>标签（逗号分隔，4-6 个）</label><input type="text" id="copy-tags" placeholder="Indie Pop, 少年感"></div>
+          </div>
+          <div class="btn-row" style="margin-top:10px">
+            <button class="btn ghost" id="btn-copy-reset" onclick="reloadAiCopy()">恢复 AI 原文</button>
+            <button class="btn" id="btn-copy-confirm" onclick="confirmCopyAndGenerate()">确认文案并生成卡片</button>
+            <span style="font:9px var(--f-mono);color:var(--ink-3);align-self:center">确认后不再被 AI 自查覆盖</span>
+          </div>
+        </div>
+
         <div class="card-stage" id="card-stage">
           <div class="frame"><iframe id="card-frame" title="评分卡预览"></iframe></div>
           <div class="actions">
@@ -1725,14 +1740,93 @@ async function runScoring(useFinalWord) {
       }
     } catch (e) { console.log("自查跳过:", e.message); }
 
-    busy("score-status", "渲染卡片中…");
+    // ── 最终文案审阅（用户有最终编辑权，不改也能直接生成）──
+    window._cardDraft = {
+      aiScores: JSON.parse(JSON.stringify(finalScores)),
+      metadata,
+      correctedAF,
+      researchData,
+      rymGenres: rymGenres || "",
+      heatData: window._heatData || {},
+      albumName: $("meta-album").value.trim(),
+    };
+    openFinalCopyEditor(finalScores);
+    setStatus("score-status", "✓ 评分完成，请审阅文案后生成卡片", "ok");
+    toast("评分完成，可审阅/修改最终文案", "ok");
+  } catch (e) {
+    setStatus("score-status", "✕ " + e.message, "err");
+    toast("请求失败：" + e.message, "err");
+    markStep(4, "active", "失败");
+  }
+  btn.disabled = false;
+  if (finalBtn) finalBtn.disabled = false;
+}
 
+// ═══ 最终文案审阅：AI 初稿 → 用户编辑/确认 → 生成卡片 ═══
+function openFinalCopyEditor(scores) {
+  const box = $("final-copy-editor");
+  const dimsBox = $("copy-dims");
+  const dims = ["词", "曲", "编", "唱", "混"];
+  dimsBox.innerHTML = dims.map(d => {
+    const s = scores && scores[d];
+    if (!s || typeof s.score !== "number") return "";
+    return `<div class="field"><label>${d} · ${s.score} 分</label>` +
+      `<textarea id="copy-${d}" rows="3" oninput="onCopyEdit()">${escapeHTML(s.rationale || "")}</textarea></div>`;
+  }).join("");
+  $("copy-oneliner").value = (scores && scores.oneLiner) || "";
+  $("copy-tags").value = ((scores && scores.tags) || []).join(", ");
+  box.style.display = "block";
+  box.scrollIntoView({behavior: "smooth", block: "start"});
+}
+
+function onCopyEdit() {
+  // 编辑即生效：后续生成卡片直接读取这些输入框
+}
+
+function collectEditedScores() {
+  const draft = window._cardDraft;
+  if (!draft) return null;
+  const scores = JSON.parse(JSON.stringify(draft.aiScores));
+  for (const d of ["词", "曲", "编", "唱", "混"]) {
+    const el = $("copy-" + d);
+    if (el && scores[d]) scores[d].rationale = el.value.trim();
+  }
+  scores.oneLiner = $("copy-oneliner").value.trim();
+  const tags = $("copy-tags").value.split(/[,，、]/).map(s => s.trim()).filter(Boolean);
+  if (tags.length) scores.tags = tags.slice(0, 6);
+  return scores;
+}
+
+function reloadAiCopy() {
+  const draft = window._cardDraft;
+  if (!draft) return toast("请先生成评分", "err");
+  openFinalCopyEditor(draft.aiScores);
+  toast("已恢复 AI 原文", "ok");
+}
+
+function confirmCopyAndGenerate() {
+  const draft = window._cardDraft;
+  if (!draft) return toast("请先生成评分", "err");
+  const edited = collectEditedScores();
+  generateCardFromDraft(edited);
+}
+
+async function generateCardFromDraft(finalScores) {
+  const btn = $("btn-score");
+  const finalBtn = $("btn-final");
+  btn.disabled = true;
+  if (finalBtn) finalBtn.disabled = true;
+  const draft = window._cardDraft;
+  if (!draft) return;
+  const { metadata, correctedAF, researchData, rymGenres, heatData, albumName } = draft;
+  busy("score-status", "渲染卡片中…");
+  try {
     // 重新计算热度（含手动补充的 QQ 评论 / RYM 人数）
     try {
       const hsRes = await fetch(`${API}/api/heat`, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ heat: window._heatData }),
+        body: JSON.stringify({ heat: heatData }),
       });
       window._heatScore = await hsRes.json();
     } catch (_) {}
@@ -1761,14 +1855,13 @@ async function runScoring(useFinalWord) {
         coverUrl: getActiveCoverUrl(),
         summary: (researchData && researchData.aggregate && researchData.aggregate.summary) || "",
         receptionQuotes: (researchData && researchData.aggregate && researchData.aggregate.receptionQuotes) || [],
-        heat: window._heatData || {},
+        heat: heatData || {},
         note: `M44 Sound Anatomy · ${new Date().toLocaleDateString('zh-CN').replace(/\//g,'-')}`,
       })
     });
     const cardHTML = await cardRes.text();
 
     // 卡片 HTML 落盘到 output/{专辑}/{歌曲}.html
-    const albumName = $("meta-album").value.trim();
     const saveFolder = albumName || "未分组";
     const saveName = `${(metadata.artist || "Unknown")}_${(metadata.title || "card").replace(/[\\/:*?"<>|]/g, "_")}.html`;
     fetch(`${API}/api/save-export`, {
@@ -1784,17 +1877,16 @@ async function runScoring(useFinalWord) {
     $("card-download").href = url;
     $("card-stage").classList.add("show");
 
-    setStatus("score-status", `✓ 总分 ${sc.totalScore}${sc.oneLiner ? " · " + sc.oneLiner : ""}`, "ok");
+    setStatus("score-status", `✓ 总分 ${finalScores.totalScore}${finalScores.oneLiner ? " · " + finalScores.oneLiner : ""}`, "ok");
     toast("评分卡已生成", "ok");
     markStep(4, "done");
 
-    // 自动存素材库 + 按所属专辑归类
+    // 自动存素材库 + 按所属专辑归类（存的是你确认/修改后的文案）
     autoSaveToLibrary(finalScores, metadata, correctedAF, albumName);
-
     setTimeout(() => $("card-stage").scrollIntoView({behavior: "smooth", block: "start"}), 300);
   } catch (e) {
     setStatus("score-status", "✕ " + e.message, "err");
-    toast("请求失败：" + e.message, "err");
+    toast("卡片生成失败：" + e.message, "err");
     markStep(4, "active", "失败");
   }
   btn.disabled = false;

@@ -438,6 +438,8 @@ export function buildScoringPrompt(audioFeatures, listeningAnswers = "", albumMe
     prompts.push("");
     prompts.push(listeningAnswers);
     prompts.push("");
+    prompts.push("用户点名的采样/原曲/歌词引用必须原样保留并写明来源（如 “I wanna be with you” 来自宇多田光 DISTANCE），这是用户核实的权威事实，不能概括或弱化。");
+    prompts.push("");
   }
 
   if (hasLyrics) {

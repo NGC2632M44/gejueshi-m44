@@ -51,9 +51,15 @@ export function sanitizeOneLiner(value) {
   return text.trim();
 }
 
-export function sanitizeScores(scores, lyricsText = "") {
+export function sanitizeScores(scores, lyricsText = "", userNotesText = "") {
   const dims = ["词", "曲", "编", "唱", "混"];
   const MAX_RATIONALE = 220;
+
+  const normalizeText = (s) =>
+    String(s || "")
+      .replace(/[，。！？、；：""''「」『』（）\s\n\r]+/g, " ")
+      .toLowerCase()
+      .trim();
 
   const bannedTerms = [
     "听者笔记", "听感记录", "用户提到", "用户指出", "用户认为", "用户笔记指出",
@@ -79,9 +85,11 @@ export function sanitizeScores(scores, lyricsText = "") {
     /(但|然而|不过)([^。，]{0,10})(未提供|不完整|无法|不能)/g,
   ];
 
-  const lyricsClean = lyricsText
-    ? lyricsText.replace(/[，。！？、；：""''「」『』（）\s\n\r]+/g, " ").toLowerCase().trim()
-    : "";
+  const lyricsClean = lyricsText ? normalizeText(lyricsText) : "";
+  const notesClean = userNotesText ? normalizeText(userNotesText) : "";
+  // 用户笔记中的引用（可能来自其它歌曲/采样，如宇多田光 DISTANCE 的
+  // “I wanna be with you”）与当前歌词一样是权威事实，净化时不能删除。
+  const quoteAuthorities = [lyricsClean, notesClean].filter(Boolean);
 
   for (const dim of dims) {
     const entry = scores[dim];
@@ -98,16 +106,16 @@ export function sanitizeScores(scores, lyricsText = "") {
       text = text.replace(pat, "");
     }
 
-    // 歌词引用核验：删除在原文中找不到的「...」引用
-    if (lyricsClean) {
+    // 歌词引用核验：删除在“当前歌词 + 用户笔记”中都找不到的「...」引用
+    if (quoteAuthorities.length) {
       text = text.replace(/「([^」]+)」/g, (match, quote) => {
-        const q = quote.replace(/[，。！？、；：\s]+/g, " ").toLowerCase().trim();
+        const q = normalizeText(quote);
         if (q.length < 4) return match;
-        if (lyricsClean.includes(q)) return match;
+        if (quoteAuthorities.some(a => a.includes(q))) return match;
         // 尝试缩短到60%再匹配
         const half = Math.floor(q.length * 0.6);
         const sq = q.slice(0, half);
-        if (sq.length >= 4 && lyricsClean.includes(sq)) return "";
+        if (sq.length >= 4 && quoteAuthorities.some(a => a.includes(sq))) return "";
         return ""; // 找不到 → 删除
       });
     }

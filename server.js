@@ -165,6 +165,9 @@ app.post("/api/analyze/score", async (req, res) => {
 - 用户说某效果不存在 → 你不能写它存在
 - 用户说某处是比喻 → 你不能当真实音效描述
 - 如果用户笔记很详细，你的 rationale 应该大部分基于笔记，少部分基于音频数字
+- 用户明确写出的采样/原曲/歌词引用（如“宇多田光 DISTANCE 里的 'I wanna be with you'”）
+  是用户辛苦求证的权威事实：必须原样保留这句引用和它的来源说明，
+  不能概括成“某个和声”“某句歌词”一带而过；引用中的英文原文逐字保留。
 
 ## 规则 2：歌词引用要准确
 只引用提供的歌词原文，找不到就不引。英文不翻译。不要截断单词。
@@ -205,7 +208,7 @@ BPM、LUFS、频谱这些数字只是辅助感受的参考，不要拿来下技�
     const scores = JSON.parse(jsonStr);
 
     // ── 后处理: 清洗 AI 输出 ──
-    sanitizeScores(scores, req.body.lyrics || "");
+    sanitizeScores(scores, req.body.lyrics || "", listeningAnswers || "");
 
     // 验证
     const dims = ["词", "曲", "编", "唱", "混"];
@@ -254,7 +257,7 @@ BPM、LUFS、频谱这些数字只是辅助感受的参考，不要拿来下技�
           }
           fixedScores.totalScore = dims.reduce((s, d) => s + (Number(fixedScores[d]?.score) || 0), 0);
           Object.assign(scores, fixedScores);
-          sanitizeScores(scores, req.body.lyrics || "");
+          sanitizeScores(scores, req.body.lyrics || "", listeningAnswers || "");
         } catch (_) {}
       }
     }
@@ -888,6 +891,9 @@ ${userGroundTruth || "（无）"}
 8. rationale 中出现无信息量的数据陈述（如“峰值顶破0dB”=等于说有声、
    单独报“BPM 128”“-7.6 LUFS”而不解释）→ 删除或改写为有意义的听感判断；
    客观数据可以保留，但必须服务于观点
+9. 用户笔记中明确写出的采样/原曲/歌词引用（即使来自其它歌曲，如宇多田光
+   DISTANCE 的 "I wanna be with you"）是权威事实：必须保留原文与来源说明，
+   不得按“歌词引用不准确/非本曲歌词”删除或概括掉。
 
 输出 JSON（score 不动）:
 {
@@ -926,7 +932,7 @@ ${userGroundTruth || "（无）"}
         scores.oneLiner = scores.oneLiner.replace(/[，、]$/, "");
       }
       if (verified.tags?.length) scores.tags = verified.tags;
-      sanitizeScores(scores, lyrics || "");
+      sanitizeScores(scores, lyrics || "", listeningAnswers || "");
       console.log(`   🔍 自查完成: ${(verified.corrections || []).length} 处修正`);
       res.json({ success: true, verified: { ...verified, scores } });
     } else {
