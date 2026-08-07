@@ -427,8 +427,17 @@ details.manual .tip{font:11px/1.7 var(--f-sans);color:var(--ink-3);margin:10px 0
           <div class="field"><label>流派</label><input type="text" id="meta-genre" placeholder="Garage Rock"></div>
           <div class="field"><label>所属专辑（留空=未分组）</label><input type="text" id="meta-album" placeholder="用于专辑归类与卡片存档" oninput="saveDraft()"></div>
         </div>
+        <div class="row" style="background:rgba(201,162,77,.06);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:12px">
+          <div style="font:10px var(--f-mono);color:var(--gold);letter-spacing:2px;width:100%;margin-bottom:6px">🎯 一锤定音（可选）：AI 总分限制在你的总分 ±4，五维大小排序与你一致；留空则全自动</div>
+          <div class="field"><label>定音·词 0-20</label><input type="text" id="final-词" placeholder="13" oninput="saveDraft()"></div>
+          <div class="field"><label>定音·曲 0-20</label><input type="text" id="final-曲" placeholder="15" oninput="saveDraft()"></div>
+          <div class="field"><label>定音·编 0-20</label><input type="text" id="final-编" placeholder="15" oninput="saveDraft()"></div>
+          <div class="field"><label>定音·唱 0-20</label><input type="text" id="final-唱" placeholder="17" oninput="saveDraft()"></div>
+          <div class="field"><label>定音·混 0-20</label><input type="text" id="final-混" placeholder="16" oninput="saveDraft()"></div>
+        </div>
         <div class="btn-row">
           <div class="field" style="flex:0 0 auto"><label>评分对象</label><select id="rating-scope" onchange="saveDraft()"><option value="song">单曲（专辑分仅作背景）</option><option value="album">专辑（专辑分作锚点）</option></select></div>
+          <button class="btn ghost" id="btn-final" onclick="runScoring(true)">🎯 一锤定音</button>
           <button class="btn" id="btn-score" onclick="runScoring()">生成评分 &amp; 卡片</button>
           <span class="inline-status" id="score-status"></span>
         </div>
@@ -509,6 +518,7 @@ const DRAFT_FIELDS = [
   "note-highlight", "note-similar", "note-lyrics",
   "meta-artist", "meta-title", "meta-year", "meta-label", "meta-genre", "meta-album",
   "rating-scope",
+  "final-词", "final-曲", "final-编", "final-唱", "final-混",
   "cover-url", "lyrics-text", "v-bpm", "v-key", "v-duration",
   "v-songbpm-url",
 ];
@@ -1515,11 +1525,13 @@ function buildDataPage(af, heatScore, researchData, scores) {
   };
 }
 
-async function runScoring() {
+async function runScoring(useFinalWord) {
   if (!audioFeatures) return toast("请先完成 Step 1 音频分析", "err");
 
   const btn = $("btn-score");
+  const finalBtn = $("btn-final");
   btn.disabled = true;
+  if (finalBtn) finalBtn.disabled = true;
   busy("score-status", "DeepSeek 评分中…");
   markStep(4, "active", "评分中");
   markStep(3, "done");
@@ -1597,6 +1609,26 @@ async function runScoring() {
   const lyricsForLang = $("lyrics-text").value.trim() || "";
   const oneLinerLang = /[\u4e00-\u9fff]/.test(lyricsForLang + metadata.title + metadata.artist) ? "zh" : "en";
 
+  // 一锤定音：用户填写五维分 → AI 总分 ±2 + 排序一致；未填完整则全自动
+  let finalWordBody = null;
+  if (useFinalWord) {
+    const fdims = ["词", "曲", "编", "唱", "混"];
+    const fw = {};
+    let fwOk = true;
+    for (const d of fdims) {
+      const v = parseFloat($(`final-${d}`).value);
+      if (Number.isFinite(v) && v >= 0 && v <= 20) fw[d] = Math.round(v);
+      else { fwOk = false; }
+    }
+    if (fwOk) {
+      const ft = fdims.reduce((s, d) => s + fw[d], 0);
+      finalWordBody = { scores: fw, total: ft, min: Math.max(0, ft - 4), max: Math.min(100, ft + 4) };
+      busy("score-status", `🎯 一锤定音评分（总分 ${ft}±4）…`);
+    } else {
+      toast("一锤定音：未填写完整五维分数，改为 AI 全自动评分", "warn");
+    }
+  }
+
   try {
     const scoreRes = await fetch(`${API}/api/analyze/score`, {
       method: "POST",
@@ -1611,6 +1643,7 @@ async function runScoring() {
         heat: window._heatData,
         ratingScope: $("rating-scope").value || "song",
         oneLinerLang,
+        finalWord: finalWordBody,
       })
     });
     const scoreData = await scoreRes.json();
@@ -1619,12 +1652,16 @@ async function runScoring() {
       setStatus("score-status", "✕ " + scoreData.error, "err");
       toast("评分失败：" + scoreData.error, "err");
       btn.disabled = false;
+      if (finalBtn) finalBtn.disabled = false;
       markStep(4, "active", "失败");
       return;
     }
 
     // Result hero
     const sc = scoreData.scores;
+    if (finalWordBody && scoreData.finalWordCompliance === false) {
+      toast("⚠️ 一锤定音约束未完全满足（AI 已尽力），请检查分数", "err");
+    }
     const hasLyrics = sc.词 !== null && sc.词 !== undefined;
     $("hero-of").textContent = "/" + (hasLyrics ? 100 : 80);
     $("hero-one").textContent = sc.oneLiner ? "「" + sc.oneLiner + "」" : "";
@@ -1736,6 +1773,7 @@ async function runScoring() {
     markStep(4, "active", "失败");
   }
   btn.disabled = false;
+  if (finalBtn) finalBtn.disabled = false;
 }
 
 // 自动保存到素材库 (按专辑归类)

@@ -4,6 +4,7 @@ import { spawn } from "child_process";
 import { existsSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { buildFinalWordPromptSection } from "./final-word.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -255,7 +256,7 @@ export function generateListeningGuide(audioFeatures) {
  * @param {Object} albumMetadata
  * @param {Object} platformRatings - { pitchfork, rym, aoty, qq, netease, wikipedia }
  */
-export function buildScoringPrompt(audioFeatures, listeningAnswers = "", albumMetadata = {}, platformRatings = null, heatData = null, lyrics = "", researchData = null, ratingScope = "song", oneLinerLang = "zh") {
+export function buildScoringPrompt(audioFeatures, listeningAnswers = "", albumMetadata = {}, platformRatings = null, heatData = null, lyrics = "", researchData = null, ratingScope = "song", oneLinerLang = "zh", finalWord = null) {
   const {
     bpm,
     key,
@@ -518,6 +519,12 @@ export function buildScoringPrompt(audioFeatures, listeningAnswers = "", albumMe
       ];
       prompts.push(`\n综合热度: ${heatResult.label} (${heatResult.stars}/5) — ${levelHint[heatResult.stars]}`);
     }
+    prompts.push("");
+  }
+
+  // ── 用户定音约束（一锤定音）──
+  if (finalWord && finalWord.scores) {
+    prompts.push(buildFinalWordPromptSection(finalWord.scores));
     prompts.push("");
   }
 

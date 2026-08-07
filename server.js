@@ -13,6 +13,7 @@ import { proxiedFetch, smartFetch } from "./services/proxy-fetch.js";
 import { getKeys } from "./services/keys.js";
 import { buildBasicCalibration } from "./services/calibrate.js";
 import { sanitizeScores, sanitizeOneLiner } from "./services/sanitize.js";
+import { parseFinalScores, checkFinalWord, finalTotal, FINAL_DIMS } from "./services/final-word.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -122,6 +123,11 @@ app.post("/api/analyze/guide", async (req, res) => {
 app.post("/api/analyze/score", async (req, res) => {
   const { audioFeatures, listeningAnswers, albumMetadata, researchData, platformRatings, model } = req.body;
   const apiKey = req.headers["x-api-key"] || getEffectiveSettings().apiKey;
+  const finalWordBody = req.body.finalWord || null;
+  const finalUserScores = finalWordBody ? parseFinalScores(finalWordBody.scores) : null;
+  if (finalWordBody && !finalUserScores) {
+    return res.status(400).json({ error: "一锤定音分数无效：词/曲/编/唱/混需填写 0-20 的数字" });
+  }
 
   if (!apiKey) {
     return res.status(400).json({ error: "未配置 DEEPSEEK_API_KEY", needsApiKey: true });
@@ -159,7 +165,8 @@ app.post("/api/analyze/score", async (req, res) => {
       req.body.lyrics || "",
       researchData,
       req.body.ratingScope || "song",
-      req.body.oneLinerLang || "zh"
+      req.body.oneLinerLang || "zh",
+      finalUserScores ? { scores: finalUserScores } : null
     );
 
     const response = await callAI({
@@ -226,6 +233,50 @@ BPM、LUFS、频谱这些数字只是辅助感受的参考，不要拿来下技�
       }
     }
 
+    // 一锤定音：校验并最多重试 2 次修正
+    let finalWordCompliance = true;
+    if (finalUserScores) {
+      const userTotal = finalTotal(finalUserScores);
+      const minT = Math.max(0, userTotal - 4);
+      const maxT = Math.min(100, userTotal + 4);
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const err = checkFinalWord(scores, finalUserScores);
+        if (!err) break;
+        if (attempt === 2) { finalWordCompliance = false; break; }
+        const fixRes = await callAI({
+          temperature: 0.1,
+          messages: [
+            {
+              role: "system",
+              content: "你是评分修正器。只输出严格 JSON（五维 score + totalScore），必须满足用户定音约束，score 为 0-20 整数。",
+            },
+            {
+              role: "user",
+              content: `当前评分：${JSON.stringify(scores)}\n违反约束：${err}\n请只修正 score 数值：总分必须在 [${minT}, ${maxT}]，五维排序保持用户基准，输出完整 JSON。`,
+            },
+          ],
+        }, { apiKey });
+        if (!fixRes.ok) continue;
+        const fixText = (await fixRes.json()).choices?.[0]?.message?.content || "";
+        const fixJson = fixText.match(/\{[\s\S]*\}/);
+        if (!fixJson) continue;
+        try {
+          const fixed = JSON.parse(fixJson[0].replace(/,\s*\}/g, "}").replace(/,\s*\]/g, "]"));
+          const fixedScores = {};
+          for (const d of dims) {
+            if (fixed[d] && Number.isFinite(fixed[d].score)) {
+              fixedScores[d] = { ...scores[d], score: Math.max(0, Math.min(20, Math.round(fixed[d].score))) };
+            } else {
+              fixedScores[d] = scores[d];
+            }
+          }
+          fixedScores.totalScore = dims.reduce((s, d) => s + (Number(fixedScores[d]?.score) || 0), 0);
+          Object.assign(scores, fixedScores);
+          sanitizeScores(scores, req.body.lyrics || "");
+        } catch (_) {}
+      }
+    }
+
     console.log(`✅ 评分完成 (${Date.now() - start}ms) 总分: ${scores.totalScore}`);
 
     res.json({
@@ -235,6 +286,7 @@ BPM、LUFS、频谱这些数字只是辅助感受的参考，不要拿来下技�
       model: data.model,
       usage: data.usage,
       _heatScore: heatScore,
+      finalWordCompliance,
     });
   } catch (err) {
     console.error(`❌ 评分失败: ${err.message}`);
