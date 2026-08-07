@@ -370,6 +370,11 @@ details.manual .tip{font:11px/1.7 var(--f-sans);color:var(--ink-3);margin:10px 0
               <div class="field"><label>QQ音乐 评论数 <a href="#" onclick="openPlatformSearch('https://y.qq.com/n/ryqq/search?w=')">↗</a></label><input type="text" id="plat-qq-comments" placeholder="133"></div>
             </div>
             <div class="row">
+              <div class="field"><label>网易云 单曲评论数（留空=自动搜索）<a href="#" onclick="openPlatformSearch('https://music.163.com/#/search/m/?s=')">↗</a></label><input type="text" id="plat-netease-song-comments" placeholder="自动" oninput="saveDraft()"></div>
+              <div class="field"><label>网易云 专辑评论数（留空=自动搜索）</label><input type="text" id="plat-netease-album-comments" placeholder="自动" oninput="saveDraft()"></div>
+              <div class="field"><label>网易云 专辑收藏数（留空=自动搜索）</label><input type="text" id="plat-netease-album-collections" placeholder="自动" oninput="saveDraft()"></div>
+            </div>
+            <div class="row">
               <div class="field"><label>Spotify 热度 /100 <a href="#" onclick="openPlatformSearch('https://open.spotify.com/search/')">↗</a></label><input type="text" id="plat-spotify" placeholder="80"></div>
               <div class="field"><label>Apple Music /100 <a href="#" onclick="openPlatformSearch('https://music.apple.com/us/search?term=')">↗</a></label><input type="text" id="plat-apple" placeholder="—"></div>
               <div class="field"><label>YouTube 播放量 <a href="#" onclick="openPlatformSearch('https://www.youtube.com/results?search_query=')">↗</a></label><input type="text" id="plat-youtube" placeholder="120000"></div>
@@ -512,7 +517,7 @@ const DRAFT_FIELDS = [
   "plat-rym-album", "plat-rym-album-count", "plat-rym-song", "plat-rym-song-count", "plat-rym-genres",
   "plat-aoty-album", "plat-aoty-critic", "plat-aoty-song", "plat-discogs",
   "plat-p4k", "plat-mc", "plat-nme", "plat-guardian", "plat-clash", "plat-dork",
-  "plat-qq-comments",
+  "plat-qq-comments", "plat-netease-song-comments", "plat-netease-album-comments", "plat-netease-album-collections",
   "plat-spotify", "plat-apple", "plat-youtube",
   "note-arrangement", "note-performance", "note-production",
   "note-highlight", "note-similar", "note-lyrics",
@@ -1584,6 +1589,13 @@ async function runScoring(useFinalWord) {
 
   if (qqComments) window._heatData.qq_music_comments = qqComments;
   if (rymAlbumCount || rymSongCount) window._heatData.rym_rating_count = rymAlbumCount || rymSongCount;
+  // 网易云手动修正：留空则使用自动搜索值
+  const neSongManual = parseInt($("plat-netease-song-comments").value);
+  const neAlbumManual = parseInt($("plat-netease-album-comments").value);
+  const neCollectManual = parseInt($("plat-netease-album-collections").value);
+  if (Number.isFinite(neSongManual)) window._heatData.netease_song_comments = neSongManual;
+  if (Number.isFinite(neAlbumManual)) window._heatData.netease_album_comments = neAlbumManual;
+  if (Number.isFinite(neCollectManual)) window._heatData.netease_album_collections = neCollectManual;
 
   const metadata = {
     artist: $("meta-artist").value.trim(),

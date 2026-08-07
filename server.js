@@ -5,7 +5,7 @@ import cors from "cors";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import { researchAlbum, searchNetease, getNeteaseDetail, fetchGeniusSong, fetchGeniusLyrics, fetchYouTubeStats, fetchLastfmTrack } from "./services/researcher.js";
+import { researchAlbum, searchNetease, getNeteaseDetail, fetchNeteaseAlbumInfo, fetchGeniusSong, fetchGeniusLyrics, fetchYouTubeStats, fetchLastfmTrack } from "./services/researcher.js";
 import { fullAnalysis, generateListeningGuide, buildScoringPrompt, extractPlatformRatings, calcHeatScore, crossReference, reverseKeyFromTab, assessKeyReliability, buildAlbumCardData } from "./services/audio-analyzer.js";
 import { mirCrossReference } from "./services/mir-cross-ref.js";
 import { callAI, getEffectiveSettings, maskApiKey, readSettings, writeSettings } from "./services/ai.js";
@@ -467,9 +467,10 @@ app.get("/api/research/chinese", async (req, res) => {
   try {
     // 专辑级：候选列表 + 评论/收藏数（标题精确匹配优先，Deluxe/Bonus 扣分）
     let neteaseAlbum = null;
+    let details = [];
     const albumSearch = await searchNetease(q, "album");
     if (albumSearch?.results?.length) {
-      const details = await Promise.all(albumSearch.results.slice(0, 5).map(async (al) => {
+      details = await Promise.all(albumSearch.results.slice(0, 5).map(async (al) => {
         const d = await getNeteaseDetail(al.id, "album");
         return {
           id: al.id, name: al.name, artist: al.artist,
@@ -494,6 +495,26 @@ app.get("/api/research/chinese", async (req, res) => {
         getNeteaseDetail(top.id, "song"),
         top.albumId ? getNeteaseDetail(top.albumId, "album") : Promise.resolve(null),
       ]);
+      // 主专辑以“单曲所属专辑”为准（专辑搜索可能返回同名/他人专辑，如
+      // Status Update Music 被 c0ncernn 的同名专辑顶掉）
+      if (top.albumId) {
+        const albumInfo = await fetchNeteaseAlbumInfo(top.albumId);
+        const candHit = (albumSearch?.results || []).find((a) => a.id === top.albumId);
+        const songAlbum = {
+          id: top.albumId,
+          name: top.album || albumInfo?.name || "未知专辑",
+          artist: albumInfo?.artist || candHit?.artist || (top.artists || "").split("/")[0] || "",
+          picUrl: albumInfo?.picUrl || candHit?.picUrl || null,
+          publishTime: albumInfo?.publishTime || candHit?.publishTime || null,
+          commentCount: songAlbumDetail?.commentCount ?? null,
+          subCount: songAlbumDetail?.subCount ?? null,
+          shareCount: songAlbumDetail?.shareCount ?? null,
+          isAlbum: true,
+          _matchedViaSong: true,
+        };
+        const candidates = [...details, songAlbum].filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i);
+        neteaseAlbum = { ...songAlbum, candidates };
+      }
       neteaseSong = {
         id: top.id, name: top.name, artists: top.artists,
         album: top.album, albumId: top.albumId,

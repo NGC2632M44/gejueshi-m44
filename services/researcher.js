@@ -1235,6 +1235,32 @@ export async function getNeteaseDetail(id, type = "song") {
 }
 
 /**
+ * 网易云专辑基本信息（含封面/艺人/发行时间），用于以“单曲所属专辑”为准。
+ */
+export async function fetchNeteaseAlbumInfo(id) {
+  try {
+    const res = await fetch(`https://music.163.com/api/album/${id}`, {
+      headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://music.163.com" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const a = data.album;
+    if (!a) return null;
+    return {
+      id: a.id,
+      name: a.name,
+      artist: a.artist?.name || (a.artists || []).map((x) => x.name).join("/") || null,
+      picUrl: a.picUrl ? (a.picUrl.includes("?") ? a.picUrl : a.picUrl + "?param=800y800") : null,
+      publishTime: a.publishTime || null,
+      size: a.size || null,
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
  * 搜索 QQ 音乐 (单曲)
  */
 export async function searchQQMusic(query) {
