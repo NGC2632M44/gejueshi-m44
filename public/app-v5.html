@@ -1710,7 +1710,7 @@ async function runScoring(useFinalWord) {
     // 卡片标签：RYM 手动流派 + 网络交叉验证标签优先，AI 标签兜底
     const rymGenreList = (rymGenres || "").split(/[,，、]/).map(s => s.trim()).filter(Boolean);
     const researchTags = (researchData && researchData.aggregate && researchData.aggregate.tags) || [];
-    const cardTags = [...new Set([...rymGenreList, ...researchTags, ...(finalScores.tags || [])])].slice(0, 6);
+    const cardTags = [...new Set([...rymGenreList, ...researchTags, ...(finalScores.tags || [])])].slice(0, 5);
     const dataPage = buildDataPage(correctedAF, window._heatScore || null, researchData, finalScores);
 
     const cardRes = await fetch(`${API}/api/card/v4`, {

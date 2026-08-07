@@ -565,7 +565,7 @@ export function buildScoringPrompt(audioFeatures, listeningAnswers = "", albumMe
   prompts.push('  "唱": {"score": 0, "rationale": "演唱/演奏表现（150-220字，描述声音特质）"},');
   prompts.push('  "混": {"score": 0, "rationale": "混音/制作/声音质感（150-220字，基于LUFS、动态幅度、立体声宽度等数据描述）"},');
   prompts.push('  "totalScore": 0,');
-  prompts.push(`  "oneLiner": "${oneLinerLang === "en" ? "One-sentence verdict (max 70 chars, must be a complete short sentence ending with a period, like a friend sharing the song, no hype)" : "一句话总评（中文歌曲用中文，不超过18个字，像发朋友圈，不要标题党）"}",`);
+  prompts.push(`  "oneLiner": "${oneLinerLang === "en" ? "One-sentence verdict (max 60 chars, must be a complete short sentence ending with a period, English only, like a friend sharing the song, no hype)" : "一句话总评（中文歌曲用中文，不超过18个字，像发朋友圈，不要标题党）"}",`);
   prompts.push('  "tags": ["Indie Rock", "Post-Punk", "Dream Pop"],');
   prompts.push('  "calibration": "简述你的评分与平台共识的关系（一致/略高/略低/偏离，为什么）"');
   prompts.push("}");
@@ -594,7 +594,7 @@ export function buildScoringPrompt(audioFeatures, listeningAnswers = "", albumMe
   prompts.push("");
   prompts.push("oneLiner 要求:");
   prompts.push("- 12-18字，像发朋友圈分享听歌感受，自然不夸张");
-  prompts.push("- 英文歌曲用英文写（最多70字符，必须是完整短句并以句号结尾，不半句截断），中文歌曲用中文写（12-18字）");
+  prompts.push("- 英文歌曲用英文写（最多60字符，必须是完整短句并以句号结尾，禁止混入中文，不半句截断），中文歌曲用中文写（12-18字）");
   prompts.push("- 好: \"126拍的自我审视，镜头关了就只剩自己\"");
   prompts.push("- 坏: \"一张充满激情与创新的优秀专辑\" ← 太空洞");
   prompts.push("");

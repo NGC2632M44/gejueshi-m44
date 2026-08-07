@@ -80,7 +80,7 @@ test("sanitize removes review-meta language and keeps apostrophes intact", () =>
 
 test("sanitizeOneLiner cuts English at word boundary without Chinese period", () => {
   const out = sanitizeOneLiner("That off-beat keyboard line is the best part of this track and it keeps me coming back again");
-  assert.ok(out.length <= 70);
+  assert.ok(out.length <= 60);
   assert.doesNotMatch(out, /keyboa$/);
   assert.match(out, /keyboard/);
   assert.doesNotMatch(out, /。$/);
@@ -91,5 +91,13 @@ test("sanitizeOneLiner never ends mid-word on a hyphenated cut", () => {
   const out = sanitizeOneLiner("A rain-soaked dance-floor confession, all body and no filter, that keeps the groove tight from the first kick to the final fadeout of the whole mix");
   assert.doesNotMatch(out, /dance-?$/);
   assert.doesNotMatch(out, /\w-$/);
-  assert.ok(out.length <= 70);
+  assert.ok(out.length <= 60);
+});
+
+
+test("sanitizeOneLiner treats mostly-English text as English even with a stray CJK char", () => {
+  const out = sanitizeOneLiner("Warm rain, wet streets, and a chorus that makes you chase. 副歌让人想跟着跑");
+  assert.ok(out.length > 20);
+  assert.match(out, /chase/);
+  assert.doesNotMatch(out, /stree$/);
 });

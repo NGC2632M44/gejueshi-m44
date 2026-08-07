@@ -17,8 +17,11 @@ export function sanitizeOneLiner(value) {
   for (const term of bannedTerms) {
     text = text.replace(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), "g"), "");
   }
-  const isCJK = /[\u4e00-\u9fff]/.test(text);
-  const LIMIT = isCJK ? 20 : 70;
+  // 按主体语言判断：中文占比 >30% 才按中文 20 字限制，否则按英文处理
+  // （避免英文总评混入一两个中文字符后被误当成中文截断）
+  const cjkCount = (text.match(/[\u4e00-\u9fff]/g) || []).length;
+  const isCJK = cjkCount / Math.max(text.length, 1) > 0.3;
+  const LIMIT = isCJK ? 20 : 60;
   if (text.length > LIMIT) {
     if (!isCJK) {
       // 英文优先在完整句号处收尾（放宽到 140 字符窗口找句号），
