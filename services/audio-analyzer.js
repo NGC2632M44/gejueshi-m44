@@ -558,7 +558,7 @@ export function buildScoringPrompt(audioFeatures, listeningAnswers = "", albumMe
   prompts.push('  "唱": {"score": 0, "rationale": "演唱/演奏表现（150-220字，描述声音特质）"},');
   prompts.push('  "混": {"score": 0, "rationale": "混音/制作/声音质感（150-220字，基于LUFS、动态幅度、立体声宽度等数据描述）"},');
   prompts.push('  "totalScore": 0,');
-  prompts.push(`  "oneLiner": "${oneLinerLang === "en" ? "One-sentence verdict (max 60 chars, like a friend sharing the song, no hype)" : "一句话总评（中文歌曲用中文，不超过18个字，像发朋友圈，不要标题党）"}",`);
+  prompts.push(`  "oneLiner": "${oneLinerLang === "en" ? "One-sentence verdict (max 90 chars, must be a complete sentence, like a friend sharing the song, no hype)" : "一句话总评（中文歌曲用中文，不超过18个字，像发朋友圈，不要标题党）"}",`);
   prompts.push('  "tags": ["Indie Rock", "Post-Punk", "Dream Pop"],');
   prompts.push('  "calibration": "简述你的评分与平台共识的关系（一致/略高/略低/偏离，为什么）"');
   prompts.push("}");
@@ -585,7 +585,7 @@ export function buildScoringPrompt(audioFeatures, listeningAnswers = "", albumMe
   prompts.push("");
   prompts.push("oneLiner 要求:");
   prompts.push("- 12-18字，像发朋友圈分享听歌感受，自然不夸张");
-  prompts.push("- 英文歌曲用英文写（最多60字符），中文歌曲用中文写（12-18字）");
+  prompts.push("- 英文歌曲用英文写（最多90字符，必须是完整句子，不半句截断），中文歌曲用中文写（12-18字）");
   prompts.push("- 好: \"126拍的自我审视，镜头关了就只剩自己\"");
   prompts.push("- 坏: \"一张充满激情与创新的优秀专辑\" ← 太空洞");
   prompts.push("");
@@ -711,11 +711,6 @@ export function calcHeatScore(heat) {
     { min: 500, stars: 1 }, { min: 1000, stars: 2 }, { min: 9800, stars: 3 },
     { min: 18000, stars: 4 }, { min: 48000, stars: 5 },
   ];
-  const BAIDU_TIERS = [
-    { min: 100, stars: 1 }, { min: 1000, stars: 2 }, { min: 5000, stars: 3 },
-    { min: 20000, stars: 4 }, { min: 100000, stars: 5 },
-  ];
-
   // ── 国内热度（★）：单曲/专辑分开，评论/收藏取更高者，QQ/网易云取更高平台 ──
   const neAlbumComments = pick("netease_album_comments", "netease_comments");
   const neSongComments = pick("netease_song_comments");
@@ -725,7 +720,6 @@ export function calcHeatScore(heat) {
   const albumComments = neAlbumComments;
   const albumCollect = pick("netease_album_collections");
   const nePlaycount = pick("netease_playcount");
-  const baiduIndex = pick("baidu_index");
 
   const domSources = [];
   if (neSongComments) domSources.push(`网易云单曲评论 ${formatNumber(neSongComments)}`);
@@ -734,18 +728,16 @@ export function calcHeatScore(heat) {
   if (songCollect) domSources.push(`单曲所属专辑收藏 ${formatNumber(songCollect)}`);
   if (albumCollect) domSources.push(`网易云专辑收藏 ${formatNumber(albumCollect)}`);
   if (nePlaycount) domSources.push(`网易云热度 ${nePlaycount}/100`);
-  if (baiduIndex) domSources.push(`百度指数 ${formatNumber(baiduIndex)}`);
 
   const domStars = Math.max(
     tierOf(songComments, SONG_COMMENT_TIERS),
     tierOf(songCollect, SONG_COLLECT_TIERS),
     tierOf(albumComments, ALBUM_COMMENT_TIERS),
     tierOf(albumCollect, ALBUM_COLLECT_TIERS),
-    nePlaycount >= 95 ? 5 : nePlaycount >= 85 ? 3 : nePlaycount >= 70 ? 2 : nePlaycount >= 55 ? 1 : 0,
-    tierOf(baiduIndex, BAIDU_TIERS)
+    nePlaycount >= 95 ? 5 : nePlaycount >= 85 ? 3 : nePlaycount >= 70 ? 2 : nePlaycount >= 55 ? 1 : 0
   );
   const domLabel = ["", "★☆☆☆☆", "★★☆☆☆", "★★★☆☆", "★★★★☆", "★★★★★"][domStars] || "☆☆☆☆☆";
-  const domDetail = domSources.join("；") || "无国内热度数据";
+  const domDetail = domSources.join("；") || "No domestic heat data";
 
   // ── 国外热度（●）：Last.fm / YouTube / Discogs / RYM / Genius / Google Trends / Chartmetric ──
   const listeners = pick("lastfm_listeners");
@@ -755,8 +747,6 @@ export function calcHeatScore(heat) {
   const discogs = discogsHave + discogsWant;
   const rymCount = pick("rym_rating_count");
   const geniusViews = pick("genius_pageviews");
-  const googleTrends = pick("google_trends");
-  const chartmetric = pick("chartmetric_score");
 
   const intlSources = [];
   if (listeners) intlSources.push(`Last.fm ${formatNumber(listeners)}听众`);
@@ -764,8 +754,6 @@ export function calcHeatScore(heat) {
   if (discogs) intlSources.push(`Discogs ${formatNumber(discogs)}${discogsHave && discogsWant ? `（want/have=${(discogsWant / discogsHave).toFixed(2)}）` : ""}`);
   if (rymCount) intlSources.push(`RYM ${formatNumber(rymCount)}人`);
   if (geniusViews) intlSources.push(`Genius ${formatNumber(geniusViews)}`);
-  if (googleTrends) intlSources.push(`Google Trends ${googleTrends}/100`);
-  if (chartmetric) intlSources.push(`Chartmetric ${chartmetric}/100`);
 
   let discogsStars = tierOf(discogs, [
     { min: 200, stars: 1 }, { min: 1000, stars: 2 }, { min: 3000, stars: 3 },
@@ -791,19 +779,17 @@ export function calcHeatScore(heat) {
     tierOf(geniusViews, [
       { min: 10000, stars: 1 }, { min: 50000, stars: 2 }, { min: 200000, stars: 3 },
       { min: 1000000, stars: 4 }, { min: 5000000, stars: 5 },
-    ]),
-    googleTrends >= 90 ? 5 : googleTrends >= 70 ? 4 : googleTrends >= 55 ? 3 : googleTrends >= 40 ? 2 : googleTrends >= 25 ? 1 : 0,
-    chartmetric >= 90 ? 5 : chartmetric >= 80 ? 4 : chartmetric >= 70 ? 3 : chartmetric >= 55 ? 2 : chartmetric >= 40 ? 1 : 0
+    ])
   );
   const intlLabel = ["", "●○○○○", "●●○○○", "●●●○○", "●●●●○", "●●●●●"][intlStars] || "○○○○○";
-  const intlDetail = intlSources.join("；") || "无国外热度数据";
+  const intlDetail = intlSources.join("；") || "No overseas heat data";
 
   if (!domSources.length && !intlSources.length) {
     return {
       stars: 0, label: "无数据", sources: [],
       domestic: { stars: 0, label: "☆☆☆☆☆", sources: [], detail: domDetail },
       international: { stars: 0, label: "○○○○○", sources: [], detail: intlDetail },
-      legend: "国内★: 单曲评论100/600/999/5千/2万；单曲收藏998/2千/1万/5万；专辑评论10/99/999/1800/3800；专辑收藏500/1千/9800/1.8万/4.8万；热度分55/70/85/95；百度指数100/1千/5千/2万/10万。评论/收藏取更高者，QQ与网易云取更高平台。国外●: 听众1万/5万/8万/30万/100万；播放10万/30万/100万/1000万/1亿；Discogs 200/1千/3千/1.5万/5万（want/have≥0.6 +1）；RYM 100/500/1500/5千/2万；Genius 1万/5万/20万/100万/500万；Google Trends 25/40/55/70/90；Chartmetric 40/55/70/80/90。",
+      legend: "国内★: 单曲评论100/600/999/5千/2万；单曲收藏998/2千/1万/5万；专辑评论10/99/999/1800/3800；专辑收藏500/1千/9800/1.8万/4.8万；热度分55/70/85/95。评论/收藏取更高者，QQ与网易云取更高平台。国外●: 听众1万/5万/8万/30万/100万；播放10万/30万/100万/1000万/1亿；Discogs 200/1千/3千/1.5万/5万（want/have≥0.6 +1）；RYM 100/500/1500/5千/2万；Genius 1万/5万/20万/100万/500万。",
     };
   }
 
@@ -815,7 +801,7 @@ export function calcHeatScore(heat) {
     sources: [...domSources, ...intlSources],
     domestic: { stars: domStars, label: domLabel, sources: domSources, detail: domDetail },
     international: { stars: intlStars, label: intlLabel, sources: intlSources, detail: intlDetail },
-    legend: "国内★: 单曲评论100/600/999/5千/2万；单曲收藏998/2千/1万/5万；专辑评论10/99/999/1800/3800；专辑收藏500/1千/9800/1.8万/4.8万；热度分55/70/85/95；百度指数100/1千/5千/2万/10万。评论/收藏取更高者，QQ与网易云取更高平台。国外●: 听众1万/5万/8万/30万/100万；播放10万/30万/100万/1000万/1亿；Discogs 200/1千/3千/1.5万/5万（want/have≥0.6 +1）；RYM 100/500/1500/5千/2万；Genius 1万/5万/20万/100万/500万；Google Trends 25/40/55/70/90；Chartmetric 40/55/70/80/90。",
+    legend: "国内★: 单曲评论100/600/999/5千/2万；单曲收藏998/2千/1万/5万；专辑评论10/99/999/1800/3800；专辑收藏500/1千/9800/1.8万/4.8万；热度分55/70/85/95。评论/收藏取更高者，QQ与网易云取更高平台。国外●: 听众1万/5万/8万/30万/100万；播放10万/30万/100万/1000万/1亿；Discogs 200/1千/3千/1.5万/5万（want/have≥0.6 +1）；RYM 100/500/1500/5千/2万；Genius 1万/5万/20万/100万/500万。",
   };
 }
 

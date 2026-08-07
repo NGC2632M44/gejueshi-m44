@@ -80,7 +80,7 @@ test("sanitize removes review-meta language and keeps apostrophes intact", () =>
 
 test("sanitizeOneLiner cuts English at word boundary without Chinese period", () => {
   const out = sanitizeOneLiner("That off-beat keyboard line is the best part of this track and it keeps me coming back again");
-  assert.ok(out.length <= 63);
+  assert.ok(out.length <= 90);
   assert.doesNotMatch(out, /keyboa$/);
   assert.match(out, /keyboard/);
   assert.doesNotMatch(out, /。$/);

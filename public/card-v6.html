@@ -61,14 +61,14 @@ body{
 .p-cover .glow{position:absolute;inset:0;background:
   radial-gradient(700px 500px at 85% 8%, hsla(var(--hue,352),55%,30%,.40), transparent 60%),
   radial-gradient(600px 600px at 8% 95%, hsla(var(--hue,352),60%,20%,.5), transparent 65%)}
-.p-cover .inner{position:relative;z-index:2;flex:1;display:flex;flex-direction:column;padding:20px 48px 14px}
+.p-cover .inner{position:relative;z-index:2;flex:1;display:flex;flex-direction:column;padding:16px 48px 10px}
 .cover-top{display:flex;justify-content:space-between;align-items:flex-start;
-  border-bottom:1px solid rgba(243,238,226,.22);padding-bottom:14px}
+  border-bottom:1px solid rgba(243,238,226,.22);padding-bottom:10px}
 .cover-top .brand{font:700 15px var(--f-mono);letter-spacing:6px}
 .cover-top .brand b{color:var(--accent);font-weight:400}
 .cover-top .date{font:10px var(--f-mono);letter-spacing:2px;color:rgba(243,238,226,.6);text-align:right;line-height:1.9}
-.sleeve-zone{flex:1;display:flex;align-items:center;justify-content:center;padding:6px 0 2px;min-height:0}
-.sleeve{width:188px;height:188px;position:relative;background-size:cover;background-position:center;
+.sleeve-zone{flex:1;display:flex;align-items:center;justify-content:center;padding:2px 0 0;min-height:0}
+.sleeve{width:216px;height:216px;position:relative;background-size:cover;background-position:center;
   border:1px solid rgba(243,238,226,.28);
   box-shadow:0 36px 80px -16px rgba(0,0,0,.85), 0 0 0 8px rgba(243,238,226,.05);
   animation:sleeveIn 1s cubic-bezier(.22,1,.36,1) both}
@@ -82,18 +82,18 @@ body{
 .c-title{font:900 38px/1.2 var(--f-serif);letter-spacing:0;margin-top:10px;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .c-meta{font:11px var(--f-mono);letter-spacing:2px;color:rgba(243,238,226,.62);margin-top:12px}
-.c-score-band{display:flex;align-items:center;justify-content:center;gap:30px;margin-top:10px;
-  padding-top:10px;border-top:1px solid rgba(243,238,226,.22);animation:riseIn .8s .45s both}
+.c-score-band{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;margin-top:6px;
+  padding-top:8px;border-top:1px solid rgba(243,238,226,.22);animation:riseIn .8s .45s both}
 .c-total{display:flex;align-items:baseline;gap:8px}
 .c-total .num{font:900 74px/0.95 var(--f-serif);color:var(--accent);letter-spacing:-3px}
 .c-total .of{font:11px var(--f-mono);letter-spacing:2px;color:rgba(243,238,226,.6);line-height:1.8;text-align:left}
-.c-heat{font:20px var(--f-mono);color:var(--gold);letter-spacing:3px;text-align:left;line-height:1.4}
-.c-heat small{display:block;font:9px var(--f-mono);letter-spacing:3px;color:rgba(243,238,226,.55)}
-.c-oneliner{margin-top:8px;font:600 18px/1.4 var(--f-serif);color:#f3eee2;animation:riseIn .8s .6s both;
+.c-heat{font:13px var(--f-mono);color:var(--gold);letter-spacing:2px;text-align:center;line-height:1.5}
+.c-heat small{display:block;font:8px var(--f-mono);letter-spacing:3px;color:rgba(243,238,226,.55)}
+.c-oneliner{margin-top:6px;font:600 16px/1.4 var(--f-serif);color:#f3eee2;animation:riseIn .8s .6s both;
   overflow:hidden;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical}
-.c-tags{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:8px;color:rgba(243,238,226,.85);
+.c-tags{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:6px;color:rgba(243,238,226,.85);
   animation:riseIn .8s .7s both}
-.c-summary{margin:8px 38px 0;font:13px/1.9 var(--f-serif);color:rgba(243,238,226,.62);text-align:center;
+.c-summary{margin:6px 38px 0;font:13px/1.9 var(--f-serif);color:rgba(243,238,226,.62);text-align:center;
   display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 /* ========== P2 Verified Data (dark, objective) ========== */
 .p-data{height:750px;background:var(--night-2);color:#f3eee2;display:flex;flex-direction:column}
@@ -111,27 +111,24 @@ body{
 .data-head .tot .n{font:900 46px/1 var(--f-serif);color:var(--accent)}
 .data-head .tot .n em{font:12px var(--f-mono);font-style:normal;color:rgba(243,238,226,.6)}
 .data-head .tot .l{font:10px var(--f-mono);letter-spacing:3px;color:rgba(243,238,226,.55)}
-.data-body{flex:1;display:flex;flex-direction:column;padding:12px 44px 4px;min-height:0;overflow:hidden}
-.data-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px 18px}
-.data-cell{display:flex;flex-direction:column;border-bottom:1px solid rgba(243,238,226,.12);padding:4px 0 3px}
-.data-cell .k{font:9px var(--f-mono);letter-spacing:2px;color:rgba(243,238,226,.5);text-transform:uppercase}
-.data-cell .v{font:600 16px/1.3 var(--f-serif);color:#f3eee2;margin-top:2px}
-.data-cell .s{font:9px var(--f-mono);color:rgba(243,238,226,.42);margin-top:1px}
-.data-heat{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:8px}
-.data-heat .hcard{display:flex;flex-direction:column;align-items:center;text-align:center;border:1px solid rgba(243,238,226,.2);border-radius:8px;padding:8px 14px}
-.data-heat .hcard .hk{font:9px var(--f-mono);letter-spacing:2px;color:rgba(243,238,226,.55)}
-.data-heat .hcard .hv{font:700 20px var(--f-mono);color:var(--gold);margin-top:4px;letter-spacing:2px}
-.data-heat .hcard .hd{font:10px/1.6 var(--f-mono);color:rgba(243,238,226,.55);margin-top:3px}
-.data-block{margin-top:8px}
-.data-block-title{font:9px var(--f-mono);letter-spacing:3px;color:rgba(201,162,77,.8);margin-bottom:2px}
-.data-sub{font:9px var(--f-mono);letter-spacing:2px;color:rgba(243,238,226,.45);margin:3px 0 1px}
-.drow{display:flex;align-items:baseline;gap:10px;font:10px/1.55 var(--f-serif);color:rgba(243,238,226,.78)}
+.data-body{flex:1;display:flex;flex-direction:column;padding:8px 44px 2px;min-height:0;overflow:hidden}
+.data-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px 16px}
+.data-cell{display:flex;flex-direction:column;border-bottom:1px solid rgba(243,238,226,.12);padding:3px 0 2px;min-width:0}
+.data-cell .k{font:8px var(--f-mono);letter-spacing:2px;color:rgba(243,238,226,.5);text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.data-cell .v{font:600 15px/1.3 var(--f-serif);color:#f3eee2;margin-top:1px}
+.data-cell .s{font:8px var(--f-mono);color:rgba(243,238,226,.42);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.data-cell.heat-cell .v{font:700 17px var(--f-mono);color:var(--gold);letter-spacing:2px}
+.data-cell.heat-cell .s{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.data-block{margin-top:6px}
+.data-block-title{font:8px var(--f-mono);letter-spacing:3px;color:rgba(201,162,77,.8);margin-bottom:1px}
+.data-sub{font:8px var(--f-mono);letter-spacing:2px;color:rgba(243,238,226,.45);margin:2px 0 0}
+.drow{display:flex;align-items:baseline;gap:10px;font:9.5px/1.45 var(--f-serif);color:rgba(243,238,226,.78)}
 .drow .dk{flex:1;min-width:0}
 .drow .dm{flex:1.2;min-width:0;color:rgba(243,238,226,.55)}
-.drow .dv{font:10px var(--f-mono);color:var(--gold);white-space:nowrap}
-.data-credits{margin-top:8px;font:10px/1.6 var(--f-serif);color:rgba(243,238,226,.78);
+.drow .dv{font:9.5px var(--f-mono);color:var(--gold);white-space:nowrap}
+.data-credits{margin-top:6px;font:9.5px/1.5 var(--f-serif);color:rgba(243,238,226,.78);
   border-left:2px solid rgba(201,162,77,.5);padding-left:12px}
-.data-credits b{font:9px var(--f-mono);letter-spacing:2px;color:rgba(201,162,77,.8)}
+.data-credits b{font:8px var(--f-mono);letter-spacing:2px;color:rgba(201,162,77,.8)}
 .data-foot{display:flex;justify-content:space-between;align-items:center;padding:10px 44px 14px;
   border-top:1px solid rgba(243,238,226,.16);font:9px var(--f-mono);letter-spacing:2px;color:rgba(243,238,226,.5)}
 /* ========== P2 Radar (Douyin-friendly) ========== */
@@ -329,8 +326,8 @@ function calcHeat(heat) {
     stars: domStars,
     label: "★".repeat(domStars) + "☆".repeat(5 - domStars),
     comments,
-    domestic: { stars: domStars, label: "★".repeat(domStars) + "☆".repeat(5 - domStars), sources: [], detail: comments ? ("网易云评论 " + comments) : "无国内热度数据" },
-    international: { stars: 0, label: "○○○○○", sources: [], detail: "无国外热度数据" },
+    domestic: { stars: domStars, label: "★".repeat(domStars) + "☆".repeat(5 - domStars), sources: [], detail: comments ? ("NetEase comments " + comments) : "No domestic heat data" },
+    international: { stars: 0, label: "○○○○○", sources: [], detail: "No overseas heat data" },
   };
 }
 function getHeatScore(data) {
@@ -343,8 +340,8 @@ function getHeatScore(data) {
       stars: h.stars,
       label,
       comments: (data.heat && data.heat.netease_comments) || 0,
-      domestic: { stars: h.stars, label, sources: h.sources || [], detail: (h.sources || []).join("；") || "无国内热度数据" },
-      international: { stars: 0, label: "○○○○○", sources: [], detail: "无国外热度数据" },
+      domestic: { stars: h.stars, label, sources: h.sources || [], detail: (h.sources || []).join("；") || "No domestic heat data" },
+      international: { stars: 0, label: "○○○○○", sources: [], detail: "No overseas heat data" },
     };
   }
   return calcHeat(data.heat);
@@ -442,11 +439,11 @@ function heatText(heat){
   const dom = h.domestic || {};
   const intl = h.international || {};
   const parts = [];
-  if (dom.stars) parts.push("国内 " + dom.label);
-  if (intl.stars) parts.push("国外 " + intl.label);
+  if (dom.stars) parts.push("DOMESTIC " + dom.label);
+  if (intl.stars) parts.push("OVERSEAS " + intl.label);
   if (!parts.length && h.stars) parts.push(h.label);
   if (!parts.length) return "";
-  return parts.join(" · ") + "<small>热度 HEAT</small>";
+  return parts.join(" · ") + "<small>HEAT</small>";
 }
 function oneLinerWrap(text) {
   if (!text) return "";
@@ -479,7 +476,7 @@ function renderCoverPage(data) {
             '<span class="of">/ ' + full + '<br>TOTAL SCORE 总分</span></div>' +
           (heat.stars > 0 ? '<div class="c-heat">' + heatText(heat) + '</div>' : "") +
         '</div>' +
-        (data.oneLiner ? '<div class="c-oneliner">' + escapeHTML(oneLinerWrap(data.oneLiner)) + '</div>' : "") +
+        (data.oneLiner ? '<div class="c-oneliner"' + (/[\u4e00-\u9fff]/.test(data.oneLiner) ? "" : ' style="font-size:14px"') + '>' + escapeHTML(oneLinerWrap(data.oneLiner)) + '</div>' : "") +
         (data.mode === "album" && data.hitTracks && data.hitTracks.length ? '<div class="c-tags" style="font-size:13px">' + data.hitTracks.map(t => '<span class="chip">🔥 ' + escapeHTML(t) + '</span>').join("") + '</div>' : (data.tags && data.tags.length ? '<div class="c-tags">' + data.tags.map(t => '<span class="chip">#' + escapeHTML(t) + '</span>').join("") + '</div>' : "")) +
         (data.receptionQuotes && data.receptionQuotes.length ? '<div class="c-summary">' + data.receptionQuotes.map(q => '「' + escapeHTML(q) + '」').join('<br>') + '</div>' : "") +
         '</div>' +
@@ -499,6 +496,10 @@ function renderDataPage(data) {
   ).join("");
   const heatDom = heat.domestic || {};
   const heatIntl = heat.international || {};
+  const heatCell = (hk, hv, hd) =>
+    '<div class="data-cell heat-cell"><span class="k">' + hk + '</span><span class="v">' + escapeHTML(hv) + '</span><span class="s">' + escapeHTML(hd) + '</span></div>';
+  const heatCells = heatCell("DOMESTIC HEAT", heatDom.label || "☆☆☆☆☆", heatDom.detail || "N/A") +
+    heatCell("OVERSEAS HEAT", heatIntl.label || "○○○○○", heatIntl.detail || "N/A");
   const chartsHtml = (dp.charts || []).slice(0, 5).map(c =>
     '<div class="drow"><span class="dk">' + escapeHTML(c.chart) + '</span><span class="dv">#' + escapeHTML(c.peak) + '</span></div>'
   ).join("");
@@ -533,11 +534,7 @@ function renderDataPage(data) {
         '<div class="tot"><div class="n">' + (data.totalScore ?? "—") + '<em>/' + (activeDims(data.scores).length * maxScore) + '</em></div><div class="l">TOTAL 总分</div></div>' +
       '</header>' +
       '<div class="data-body">' +
-        (rows ? '<div class="data-grid">' + rows + '</div>' : "") +
-        '<div class="data-heat">' +
-          '<div class="hcard"><div class="hk">国内热度 DOMESTIC</div><div class="hv">' + escapeHTML(heatDom.label || "☆☆☆☆☆") + '</div><div class="hd">' + escapeHTML(heatDom.detail || "无数据") + '</div></div>' +
-          '<div class="hcard"><div class="hk">国外热度 OVERSEAS</div><div class="hv">' + escapeHTML(heatIntl.label || "○○○○○") + '</div><div class="hd">' + escapeHTML(heatIntl.detail || "无数据") + '</div></div>' +
-        '</div>' +
+        (rows ? '<div class="data-grid">' + rows + heatCells + '</div>' : "") +
         (chartsHtml ? '<div class="data-block"><div class="data-block-title">CHARTS</div>' + chartsHtml + '</div>' : "") +
         (yearHtml ? '<div class="data-block"><div class="data-block-title">YEAR-END LISTS</div>' + yearHtml + '</div>' : "") +
         ((aggHtml || revHtml) ? '<div class="data-block"><div class="data-block-title">PROFESSIONAL RATINGS</div>' +
@@ -644,8 +641,7 @@ function renderSummaryPage(data) {
         (heat.stars > 0 ? '<div class="heat">' + heatText(heat) + '</div>' : "<span></span>") +
         '<div class="chip">总分 ' + (data.totalScore ?? "—") + '</div>' +
       '</div>' +
-      (data.note ? '<div class="note">' + escapeHTML(data.note) + '</div>' : "") +
-      '<div class="sig"><span>M44 SOUND ANATOMY</span><span>GENERATED ' + dateOf(data) + '</span></div>' +
+      '<div class="sig" style="justify-content:center;margin-top:6px"><span>M44 SOUND ANATOMY · GENERATED ' + dateOf(data) + '</span></div>' +
     '</footer>' +
   '</section>';
 }

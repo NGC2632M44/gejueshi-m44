@@ -367,18 +367,12 @@ details.manual .tip{font:11px/1.7 var(--f-sans);color:var(--ink-3);margin:10px 0
               <div class="field"><label>Dork /5 <a href="#" onclick="openPlatformSearch('https://readdork.com/?s=')">↗</a></label><input type="text" id="plat-dork" placeholder="4"></div>
             </div>
             <div class="row">
-              <div class="field"><label>QQ音乐 评分 /10 <a href="#" onclick="openPlatformSearch('https://y.qq.com/n/ryqq/search?w=')">↗</a></label><input type="text" id="plat-qq" placeholder="8.5"></div>
-              <div class="field"><label>QQ音乐 评论数</label><input type="text" id="plat-qq-comments" placeholder="133"></div>
+              <div class="field"><label>QQ音乐 评论数 <a href="#" onclick="openPlatformSearch('https://y.qq.com/n/ryqq/search?w=')">↗</a></label><input type="text" id="plat-qq-comments" placeholder="133"></div>
             </div>
             <div class="row">
               <div class="field"><label>Spotify 热度 /100 <a href="#" onclick="openPlatformSearch('https://open.spotify.com/search/')">↗</a></label><input type="text" id="plat-spotify" placeholder="80"></div>
               <div class="field"><label>Apple Music /100 <a href="#" onclick="openPlatformSearch('https://music.apple.com/us/search?term=')">↗</a></label><input type="text" id="plat-apple" placeholder="—"></div>
               <div class="field"><label>YouTube 播放量 <a href="#" onclick="openPlatformSearch('https://www.youtube.com/results?search_query=')">↗</a></label><input type="text" id="plat-youtube" placeholder="120000"></div>
-            </div>
-            <div class="row">
-              <div class="field"><label>百度指数（国内流量参考）<a href="#" onclick="openPlatformSearch('https://index.baidu.com/v2/main/index.html#/trend/')">↗</a></label><input type="text" id="plat-baidu" placeholder="5000"></div>
-              <div class="field"><label>Google Trends 0-100 <a href="#" onclick="openPlatformSearch('https://trends.google.com/trends/explore?q=')">↗</a></label><input type="text" id="plat-google-trends" placeholder="40"></div>
-              <div class="field"><label>Chartmetric Score 0-100 <a href="#" onclick="openPlatformSearch('https://app.chartmetric.com/search/')">↗</a></label><input type="text" id="plat-chartmetric" placeholder="60"></div>
             </div>
           </div>
         </details>
@@ -509,9 +503,8 @@ const DRAFT_FIELDS = [
   "plat-rym-album", "plat-rym-album-count", "plat-rym-song", "plat-rym-song-count", "plat-rym-genres",
   "plat-aoty-album", "plat-aoty-critic", "plat-aoty-song", "plat-discogs",
   "plat-p4k", "plat-mc", "plat-nme", "plat-guardian", "plat-clash", "plat-dork",
-  "plat-qq", "plat-qq-comments",
+  "plat-qq-comments",
   "plat-spotify", "plat-apple", "plat-youtube",
-  "plat-baidu", "plat-google-trends", "plat-chartmetric",
   "note-arrangement", "note-performance", "note-production",
   "note-highlight", "note-similar", "note-lyrics",
   "meta-artist", "meta-title", "meta-year", "meta-label", "meta-genre", "meta-album",
@@ -1245,10 +1238,7 @@ async function runResearch() {
         if (!$("plat-youtube").value) $("plat-youtube").value = cn.youtube.views;
       }
 
-      // Genius 歌词页（卡片佐料，不参与热度）
-      if (cn.genius && cn.genius.url) {
-        strip.innerHTML += `<div class="badge"><div class="s" style="font-size:11px">↗</div><div class="k"><a href="${escapeHTML(cn.genius.url)}" target="_blank" style="color:inherit">Genius</a></div></div>`;
-      }
+      // Genius 只用于歌词链（LRCLIB → Genius 页面解析 → 网易云），不在 Step2 展示链接
 
       // 国内★/国外● 热度分级（透明阈值，见 /api/heat）
       try {
@@ -1557,7 +1547,6 @@ async function runScoring() {
   const guardianVal = parseFloat($("plat-guardian").value);
   const clashVal = parseFloat($("plat-clash").value);
   const dorkVal = parseFloat($("plat-dork").value);
-  const qqVal = parseFloat($("plat-qq").value);
   const qqComments = parseInt($("plat-qq-comments").value) || null;
   const spotifyVal = parseInt($("plat-spotify").value) || null;
   const appleVal = parseInt($("plat-apple").value) || null;
@@ -1576,19 +1565,12 @@ async function runScoring() {
   if (guardianVal) pr.guardian = {score: guardianVal, max: 5};
   if (clashVal) pr.clash = {score: clashVal, max: 10};
   if (dorkVal) pr.dork = {score: dorkVal, max: 5};
-  if (qqVal) pr.qq = {score: qqVal, max: 10};
   if (spotifyVal != null) pr.spotify = {score: spotifyVal, max: 100};
   if (appleVal != null) pr.apple = {score: appleVal, max: 100};
   if (youtubeVal != null) { pr.youtube = {score: youtubeVal}; window._heatData.youtube_views = youtubeVal; }
 
   if (qqComments) window._heatData.qq_music_comments = qqComments;
   if (rymAlbumCount || rymSongCount) window._heatData.rym_rating_count = rymAlbumCount || rymSongCount;
-  const baiduVal = parseInt($("plat-baidu").value) || null;
-  const googleTrendsVal = parseInt($("plat-google-trends").value) || null;
-  const chartmetricVal = parseInt($("plat-chartmetric").value) || null;
-  if (baiduVal) window._heatData.baidu_index = baiduVal;
-  if (googleTrendsVal) window._heatData.google_trends = googleTrendsVal;
-  if (chartmetricVal) window._heatData.chartmetric_score = chartmetricVal;
 
   const metadata = {
     artist: $("meta-artist").value.trim(),

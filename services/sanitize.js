@@ -16,14 +16,14 @@ export function sanitizeOneLiner(value) {
     text = text.replace(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), "g"), "");
   }
   const isCJK = /[\u4e00-\u9fff]/.test(text);
-  const LIMIT = isCJK ? 20 : 60;
+  const LIMIT = isCJK ? 20 : 90;
   if (text.length > LIMIT) {
     const slice = text.slice(0, LIMIT);
     if (!isCJK) {
-      // 英文按词边界截断，不切断单词；截断加省略号，不追加中文句号
+      // 英文优先在完整句号处截断，其次按词边界，不切断单词、不追加省略号/中文句号
+      const sent = Math.max(slice.lastIndexOf("."), slice.lastIndexOf("!"), slice.lastIndexOf("?"));
       const lastSpace = slice.lastIndexOf(" ");
-      text = (lastSpace > LIMIT * 0.5 ? slice.slice(0, lastSpace) : slice).trim();
-      if (text.length < String(value).trim().length) text += "…";
+      text = (sent > LIMIT * 0.5 ? slice.slice(0, sent + 1) : (lastSpace > LIMIT * 0.4 ? slice.slice(0, lastSpace) : slice)).trim();
     } else {
       const lastPunct = Math.max(slice.lastIndexOf("。"), slice.lastIndexOf("，"), slice.lastIndexOf("；"));
       text = lastPunct > LIMIT * 0.6 ? slice.slice(0, lastPunct + 1) : slice;

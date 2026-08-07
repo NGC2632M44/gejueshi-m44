@@ -1,5 +1,28 @@
 # Changelog
 
+## [3.12.0] - 2026-08-07
+
+### Removed
+- 删除百度指数、Google Trends、Chartmetric Score 手动字段及相关热度计算
+  （无有效数据源/API 未批复，避免误导）。
+- 删除 QQ 音乐“评分”手动输入（保留 QQ 评论数，作为国内热度信号）。
+- Step2 不再展示 Genius 链接徽标；Genius 只保留在歌词链
+  （LRCLIB → Genius 页面解析 → 网易云）与基础信息校准中。
+
+### Fixed
+- 英文总评不再截成半句：上限 90 字符、必须是完整句子，净化器优先在句号处
+  截断、不补省略号；封面英文总评用更小字号保证单行放得下。
+- 数据页底部内容不再被遮挡：参数网格压缩为 3×5，DOMESTIC HEAT / OVERSEAS
+  HEAT 放入最后一行右侧两格；Charts / Year-end / Ratings / Credits 改用
+  更紧凑的分行排版。
+- 卡片所有面向读者的热度文字统一为英文（DOMESTIC / OVERSEAS），不再出现
+  “国内热度 / 国外热度”。
+
+### Changed
+- 第一页：专辑封面放大（216px）、上下间距压缩；总分与热度改为上下布局，
+  热度元素缩小且不再挤向左侧。
+- 最后一页制作信息去重：只保留一行 `M44 SOUND ANATOMY · GENERATED 日期`。
+
 ## [3.11.0] - 2026-08-07
 
 ### Added
