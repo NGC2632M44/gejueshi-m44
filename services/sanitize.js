@@ -1,16 +1,8 @@
 // 卡片文本后处理：删除元数据串/内部用语，控制长度，保证面向读者可读。
-function stripTechTokens(text) {
-  return String(text || "")
-    .replace(/\b顶破\s*0\s*dB\b/gi, "接近削波边缘")
-    .replace(/\s*(True\s*Peak|dBTP|LUFS|LRA|Crest\s*Factor|RMS|FFT|intersample|clipping_risk|integrated_loudness|sampling\s*rate|phase\s*coll?relation|spectral\s*centroid|spectral\s*rolloff|spectral\s*bandwidth)\b/gi, " ")
-    .replace(/\b\d+(?:\.\d+)?\s*(?:dBFS?|dBTP|Hz|kHz)\b/gi, " ")
-    .replace(/[ \t]{2,}/g, " ")
-    .trim();
-}
 
 export function sanitizeOneLiner(value) {
   if (typeof value !== "string") return value;
-  let text = stripTechTokens(value);
+  let text = value;
   text = text.replace(/\s*\[[^\]]+\]\s*/g, " ");
   text = text.replace(/\s+([，。！？、；：])/g, "$1").replace(/[ \t]{2,}/g, " ").trim();
   const bannedTerms = [
@@ -18,6 +10,7 @@ export function sanitizeOneLiner(value) {
     "根据用户", "从用户", "用户没有提供", "用户未提供",
     "乐评里提到", "乐评提到", "媒体评价", "平台评分显示", "评论区提到", "网友评价",
     "808", "909", "TR-808", "TR-909",
+    "顶破 0 dB", "峰值顶破 0 dB", "顶破0dB",
     "上头", "绝了", "拿捏", "很顶", "氛围感拉满", "封神", "yyds", "YYDS", "天花板", "杀疯了",
     "总体来说", "整体而言", "值得一提的是", "可圈可点", "恰到好处", "展现了", "呈现出", "充满了", "富有", "兼具", "一方面", "另一方面",
     "具体歌词文本需以实际发行版本为准", "以实际歌词为准", "以实际版本为准",
@@ -67,6 +60,7 @@ export function sanitizeScores(scores, lyricsText = "") {
     "根据用户", "从用户", "用户没有提供", "用户未提供",
     "乐评里提到", "乐评提到", "媒体评价", "平台评分显示", "评论区提到", "网友评价",
     "808", "909", "TR-808", "TR-909",
+    "顶破 0 dB", "峰值顶破 0 dB", "顶破0dB",
     "上头", "绝了", "拿捏", "很顶", "氛围感拉满", "封神", "yyds", "YYDS", "天花板", "杀疯了",
     "总体来说", "整体而言", "值得一提的是", "可圈可点", "恰到好处", "展现了", "呈现出", "充满了", "富有", "兼具", "一方面", "另一方面",
     "具体歌词文本需以实际发行版本为准", "以实际歌词为准", "以实际版本为准",
@@ -94,7 +88,6 @@ export function sanitizeScores(scores, lyricsText = "") {
     if (!entry || typeof entry.rationale !== "string") continue;
 
     let text = entry.rationale;
-    text = stripTechTokens(text);
     // 删除面向读者的元数据串（如 [混音:LUFS=-7.6]），只保留自然语言
     text = text.replace(/\s*\[[^\]]+\]\s*/g, " ");
     text = text.replace(/\s+([，。！？、；：])/g, "$1").replace(/[ \t]{2,}/g, " ").replace(/。\s*。/g, "。");
