@@ -74,6 +74,38 @@ def test_clean_json_types_converts_numpy_to_native():
     assert isinstance(cleaned["b"], bool)
 
 
+def test_fuse_bpm_consensus_resolves_octave_and_takes_majority():
+    fused, meta = aa._fuse_bpm_estimators([
+        {"name": "sonara", "bpm": 128.2, "confidence": 80},
+        {"name": "librosa_beat_track", "bpm": 129.2, "confidence": 95},
+        {"name": "librosa_interval_median", "bpm": 129.2, "confidence": 95},
+        {"name": "librosa_interval_mean", "bpm": 128.6, "confidence": 95},
+    ])
+    assert fused is not None
+    assert 127.5 <= fused <= 129.5
+    assert meta["fusion"] == "consensus"
+    assert len(meta["winner"]) == 4
+
+
+def test_fuse_bpm_detects_octave_split_without_consensus():
+    # 两簇各 2 个估计器：sonara 簇 vs librosa 簇 → 保留 sonara，标记分歧
+    fused, meta = aa._fuse_bpm_estimators([
+        {"name": "sonara", "bpm": 128.0, "confidence": 90},
+        {"name": "librosa_interval_median", "bpm": 129.0, "confidence": 95},
+        {"name": "librosa_beat_track", "bpm": 172.0, "confidence": 95},
+        {"name": "librosa_interval_mean", "bpm": 172.5, "confidence": 95},
+    ])
+    assert fused == 128.0
+    assert meta["fusion"] == "partial"
+    assert meta["octave_risk"] is True
+
+
+def test_fuse_bpm_returns_none_without_valid_estimators():
+    fused, meta = aa._fuse_bpm_estimators([])
+    assert fused is None
+    assert meta["fusion"] == "none"
+
+
 @pytest.mark.slow
 def test_cli_camera_bpm_container_warning_and_json_types():
     result = _run_cli(CAMERA)

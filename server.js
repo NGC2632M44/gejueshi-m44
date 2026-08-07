@@ -6,7 +6,7 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import { researchAlbum, searchNetease, getNeteaseDetail, fetchNeteaseAlbumInfo, fetchGeniusSong, fetchGeniusLyrics, fetchYouTubeStats, fetchLastfmTrack } from "./services/researcher.js";
-import { fullAnalysis, generateListeningGuide, buildScoringPrompt, extractPlatformRatings, calcHeatScore, crossReference, reverseKeyFromTab, assessKeyReliability, buildAlbumCardData } from "./services/audio-analyzer.js";
+import { fullAnalysis, buildScoringPrompt, extractPlatformRatings, calcHeatScore, crossReference, reverseKeyFromTab, assessKeyReliability, buildAlbumCardData } from "./services/audio-analyzer.js";
 import { mirCrossReference } from "./services/mir-cross-ref.js";
 import { callAI, getEffectiveSettings, maskApiKey, readSettings, writeSettings } from "./services/ai.js";
 import { proxiedFetch, smartFetch } from "./services/proxy-fetch.js";
@@ -60,7 +60,7 @@ app.get("/api/research", async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════
-// [新增 v3.1] API: 音频分析 + 听歌指引
+// [新增 v3.1] API: 音频分析
 // ═══════════════════════════════════════════════════
 app.post("/api/analyze", async (req, res) => {
   const { audioPath, listeningAnswers, albumMetadata } = req.body;
@@ -96,24 +96,6 @@ app.post("/api/analyze", async (req, res) => {
       error: err.message,
       hint: "请确认: 1) pip install essentia librosa  2) Python 在 PATH 中  3) 音频文件路径正确",
     });
-  }
-});
-
-// ═══════════════════════════════════════════════════
-// [新增 v3.1] API: 仅生成听歌指引 (无需 Python)
-// ═══════════════════════════════════════════════════
-app.post("/api/analyze/guide", async (req, res) => {
-  const { audioFeatures } = req.body;
-
-  if (!audioFeatures) {
-    return res.status(400).json({ error: "请提供音频特征数据 audioFeatures" });
-  }
-
-  try {
-    const guide = generateListeningGuide(audioFeatures);
-    res.json({ success: true, guide });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -1097,6 +1079,8 @@ app.post("/api/mir-cross-ref", async (req, res) => {
     const keys = getKeys();
     const result = await mirCrossReference(query, localResult || {}, {
       getsongbpmApiKey: keys.getsongbpmApiKey,
+      lastfmApiKey: keys.lastfmApiKey,
+      geniusToken: keys.geniusToken,
       songTitle,
       artistName,
     });
@@ -1342,7 +1326,7 @@ app.listen(PORT, () => {
   console.log("  ║  [v3新增] /api/library   /api/album/card     ║");
   console.log("  ╠══════════════════════════════════════════════╣");
   console.log("  ║  📊 Essentia/Librosa → 客观音频特征          ║");
-  console.log("  ║  🎯 听歌指引 → 用户感知 → AI 五维评分       ║");
+  console.log("  ║  🎯 本地分析 + 外部交叉核验 → AI 五维评分  ║");
   console.log("  ║  🖼️  card-v3.html → 五边形雷达评分卡       ║");
   console.log("  ╚══════════════════════════════════════════════╝");
   console.log("");

@@ -258,7 +258,6 @@ details.manual .tip{font:11px/1.7 var(--f-sans);color:var(--ink-3);margin:10px 0
           <span class="inline-status" id="analyze-status"></span>
         </div>
         <div class="stat-grid" id="audio-stats" style="display:none"></div>
-        <div class="guide" id="guide-box" style="display:none"></div>
         <div class="verify-panel" id="verify-panel" style="display:none">
           <div class="verify-head">🔬 交叉检验 — 音频分析校准</div>
           <div class="tip" style="margin-bottom:10px">librosa/essentia 自动检测值如下。调性检测对电子/流行不可靠，建议手动搜索歌曲实际参数后修正。修正值将用于评分。</div>
@@ -388,7 +387,7 @@ details.manual .tip{font:11px/1.7 var(--f-sans);color:var(--ink-3);margin:10px 0
     <section class="panel" id="step3">
       <div class="panel-head"><span class="no">STEP 03</span><h2>你的主观听感</h2><span class="hint">越详细，评分越准</span></div>
       <div class="panel-body">
-        <p style="font:12px/1.7 var(--f-sans);color:var(--ink-3);margin-bottom:16px">先看 Step 1 的听歌指引，然后边听边写。不必每项都填。</p>
+        <p style="font:12px/1.7 var(--f-sans);color:var(--ink-3);margin-bottom:16px">结合 Step 1 的分析结果边听边写。不必每项都填。</p>
         <div class="notes-grid">
           <div class="field full">
             <label>编曲 — 稀疏 / 适中 / 密集？印象深刻的器乐编排细节？</label>
@@ -726,10 +725,6 @@ async function runAnalysis() {
     grid.style.display = "grid";
     grid.innerHTML = stats.map(s => `<div class="stat"><div class="v">${s[0]}</div><div class="l">${s[1]}</div></div>`).join("");
 
-    const guide = $("guide-box");
-    guide.style.display = "block";
-    guide.innerHTML = renderGuide(data.listeningGuide || "");
-
     if (!$("online-song").value.trim() && !$("online-artist").value.trim()) {
       const fn = af.file || "";
       const name = fn.replace(/\.[^.]+$/, "").replace(/[-_]/g, " ").replace(/YouTube/ig, "").trim();
@@ -769,18 +764,6 @@ async function runAnalysis() {
         if (mirData.success && mirData.recommended) {
           window._mirResult = mirData;
           showMIRPanel(mirData);
-          // 听歌指引用校准后的 BPM/Key 重新生成，避免“界面 A minor / 指引 E minor”
-          try {
-            const guideRes = await fetch(`${API}/api/analyze/guide`, {
-              method: "POST",
-              headers: {"Content-Type": "application/json"},
-              body: JSON.stringify({ audioFeatures }),
-            });
-            const guideData = await guideRes.json();
-            if (guideData.success && guideData.guide) {
-              guide.innerHTML = renderGuide(guideData.guide);
-            }
-          } catch (_) {}
           setStatus("analyze-status", "✓ 分析 + MIR验证完成", "ok");
           markStep(1, "done");
         } else {
@@ -843,7 +826,9 @@ function showMIRPanel(mirData) {
   const rec = mirData.recommended || {};
   const localDisagree = ref.local_disagreement || {};
   const sources = mirData.sources || [];
-  const externalOk = sources.some(s => s.status === "ok" && s.name !== "local");
+  // 只有真正提供 BPM/Key 的来源才算“外部校准成功”；
+  // Last.fm / Genius 等元数据源命中不算（防止把本地值误标成 network 校准）。
+  const externalOk = sources.some(s => s.status === "ok" && ["hooktheory", "songbpm"].includes(s.name));
   const originalBpm = audioFeatures?.manual_correction?.original_bpm ?? ref.bpm_values?.local ?? audioFeatures?.bpm;
   const originalKey = audioFeatures?.manual_correction?.original_key ?? ref.key_values?.local ?? audioFeatures?.key;
 
@@ -858,6 +843,36 @@ function showMIRPanel(mirData) {
   const srcRow = buildSourceChips(sources);
   srcRow.classList.add("mir-dynamic");
   panel.insertBefore(srcRow, panel.querySelector(".row"));
+
+  // 数据可信度报告：自动判断哪些字段需要人工复核
+  const trust = mirData.trust;
+  if (trust) {
+    const trustEl = document.createElement("div");
+    trustEl.className = "mir-dynamic";
+    trustEl.style.cssText = "margin:6px 0 8px;padding:8px 12px;background:rgba(76,175,125,.05);border:1px solid var(--line);border-radius:8px";
+    const confColor = { high: "#4caf7d", medium: "#c9a24d", low: "var(--accent)" };
+    const confText = { high: "高", medium: "中", low: "低" };
+    const valueOf = (label, t) => {
+      if (label === "时长") return (t && (t.external_seconds ?? t.local_seconds)) != null ? (t.external_seconds ?? t.local_seconds) + "s" : "—";
+      return t && t.value != null ? t.value : "—";
+    };
+    const needsManual = [];
+    const chips = [
+      ["BPM", trust.bpm],
+      ["Key", trust.key],
+      ["时长", trust.duration],
+      ["和弦", trust.chord],
+    ].map(([label, t]) => {
+      const color = confColor[t && t.confidence] || "var(--ink-3)";
+      if (t && t.confidence === "low") needsManual.push(label + "：" + (t.note || "低置信"));
+      return `<span style="font:9px var(--f-mono);padding:2px 8px;border:1px solid ${color};color:${color};border-radius:99px">${label} ${escapeHTML(String(valueOf(label, t)))} · ${confText[t && t.confidence] || "?"}信</span>`;
+    }).join(" ");
+    trustEl.innerHTML = `<div style="font:10px var(--f-mono);color:var(--ink-2);margin-bottom:4px">数据可信度</div>${chips}` +
+      (needsManual.length
+        ? `<div style="font:9px var(--f-mono);color:var(--accent);margin-top:4px">⚠️ 需人工确认：${escapeHTML(needsManual.join("；"))}</div>`
+        : `<div style="font:9px var(--f-mono);color:#4caf7d;margin-top:4px">✓ 已交叉验证，无需人工复核</div>`);
+    panel.insertBefore(trustEl, panel.querySelector(".row"));
+  }
 
   // 时长校验（MusicBrainz 录音时长 vs 本地原文时长）
   const durChk = mirData.duration_check;
@@ -878,7 +893,7 @@ function showMIRPanel(mirData) {
     const banner = document.createElement("div");
     banner.className = "mir-dynamic";
     banner.style.cssText = "margin-top:8px;padding:8px 12px;background:rgba(201,162,77,.08);border-left:2px solid var(--gold);border-radius:4px;font:11px var(--f-mono);color:var(--gold)";
-    banner.textContent = "⚠️ 当前 BPM/Key 仅为本地单源结果：getsongbpm 未收录该曲、MusicBrainz 只定位录音不提供 BPM/Key。可粘贴上方 SongBPM 歌曲页 URL 手动校准；未校准前置信度不代表准确性";
+    banner.textContent = "⚠️ 没有外部来源提供可用的 BPM/Key/和弦：当前为本地多算法结果，未外部验证。可粘贴上方 SongBPM 歌曲页 URL 手动校准；未校准前置信度不代表准确性";
     panel.insertBefore(banner, panel.querySelector(".row"));
   }
 
@@ -920,8 +935,13 @@ function showMIRPanel(mirData) {
       const chordEl = document.createElement("div");
       chordEl.className = "mir-dynamic";
       chordEl.style.cssText = "margin:6px 0 8px;font:10px var(--f-mono);color:var(--ink-3)";
-      chordEl.innerHTML = `本地高频和弦: <b>${escapeHTML(mirData.local_chord_progression)}</b>（仅参考，未外部验证）`;
+      const localDisplay = mirData.local_chord_roman || mirData.local_chord_progression;
+      chordEl.innerHTML = `本地和弦进行（未验证）: <b>${escapeHTML(localDisplay)}</b>${mirData.local_chord_roman ? `（${escapeHTML(mirData.local_chord_progression)}）` : ""}`;
       panel.insertBefore(chordEl, panel.querySelector(".row"));
+      audioFeatures.chord_sequence = localDisplay;
+      audioFeatures.chord_source = "local_unverified";
+      const statVals2 = document.querySelectorAll("#audio-stats .stat .v");
+      if (statVals2[9]) statVals2[9].textContent = localDisplay + "（本地·未验证）";
     }
 
     const statVals = document.querySelectorAll("#audio-stats .stat .v");
@@ -1034,14 +1054,6 @@ async function verifySongBPMUrl() {
     setStatus("analyze-status", "✕ " + (e.message || "网络请求失败"), "err");
     toast("验证失败：" + (e.message || "请确认本地服务已启动"), "err");
   }
-}
-
-function renderGuide(md) {
-  const esc = escapeHTML(md);
-  return esc
-    .replace(/^### (.*)$/gm, "<h3>$1</h3>")
-    .replace(/^## (.*)$/gm, "<h2>$1</h2>")
-    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
 }
 
 // ============ 歌词 ============
@@ -1518,7 +1530,8 @@ function buildDataPage(af, heatScore, researchData, scores) {
   add("Spectral Centroid", sp.centroid_mean != null ? Math.round(sp.centroid_mean) + " Hz" : null, "librosa");
   add("Spectral Rolloff", sp.rolloff_mean != null ? Math.round(sp.rolloff_mean) + " Hz" : null, "librosa");
   add("Spectral Bandwidth", sp.bandwidth_mean != null ? Math.round(sp.bandwidth_mean) + " Hz" : null, "librosa");
-  add("Chord Progression", (af && af.chord_sequence) || null, "Hooktheory");
+  const chordSrc = (af && af.chord_source === "local_unverified") ? "sonara (local, unverified)" : "Hooktheory/SongBPM";
+  add("Chord Progression", (af && af.chord_sequence) || null, chordSrc);
   const wd = (researchData && researchData.wikiData) || {};
   return {
     params,
@@ -1891,7 +1904,6 @@ function toggleAlbumMode() {
     document.querySelector("#step1 .field:nth-child(2)").style.display = "none";
     $("btn-analyze").closest(".btn-row").style.display = "none";
     $("audio-stats").style.display = "none";
-    $("guide-box").style.display = "none";
     $("verify-panel").style.display = "none";
     $("lyrics-section").style.display = "none";
     $("album-track-section").style.display = "block";

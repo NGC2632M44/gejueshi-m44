@@ -1,5 +1,5 @@
 // 歌掘士 v3.1 — AI音频分析服务
-// 调用 analyze_audio.py → 生成听歌指引 → Claude翻译为五维评分
+// 调用 analyze_audio.py → 多源交叉核验 → 五维评分
 import { spawn } from "child_process";
 import { existsSync } from "fs";
 import path from "path";
@@ -144,109 +144,6 @@ function interpretKeyConfidence(conf) {
   if (conf < 50) return "（置信度较低，可能转调频繁）";
   if (conf < 70) return "（置信度中等）";
   return "（置信度高，调性稳定）";
-}
-
-/**
- * 生成听歌指引 — 告诉用户该听什么
- */
-export function generateListeningGuide(audioFeatures) {
-  const {
-    bpm,
-    key,
-    structure = [],
-    spectral = {},
-    dynamics = {},
-    duration_seconds,
-    energy_curve = [],
-  } = audioFeatures;
-
-  const lines = [];
-
-  lines.push("## 听歌指引\n");
-
-  // 1. 基本信息
-  lines.push("### 音频特征");
-  lines.push(`- BPM: ${bpm ? bpm + " — " + interpretBPM(bpm) : "未检出"}${(audioFeatures.bpm_method || "").includes("network") ? "（多源校准）" : ""}`);
-  lines.push(`- 调性: ${key || "未检出"}${(audioFeatures.key_method || "").includes("network") ? "（多源校准）" : ""}`);
-  if (spectral.centroid_mean) {
-    lines.push(`- 整体音色: ${interpretCentroid(spectral.centroid_mean)}`);
-  }
-  if (spectral.centroid_std) {
-    lines.push(`- 音色变化度: ${spectral.centroid_std > 800 ? "丰富多变，不同段落色彩变化大" : "相对统一，整体听感均衡"}`);
-  }
-  if (duration_seconds) {
-    const m = Math.floor(duration_seconds / 60);
-    const s = Math.floor(duration_seconds % 60);
-    lines.push(`- 时长: ${m}分${String(s).padStart(2, "0")}秒`);
-  }
-  lines.push("");
-
-  // 2. 结构
-  if (structure.length > 0) {
-    lines.push("### 段落结构");
-    for (const seg of structure) {
-      const icons = { intro: "🌅", verse: "📖", chorus: "🔥", bridge: "🌉", outro: "🌙" };
-      const icon = icons[seg.label] || "🎵";
-      lines.push(`- ${icon} **${seg.label}** (${seg.start}s–${seg.end}s)`);
-    }
-    lines.push("");
-  }
-
-  // 3. 动态
-  if (dynamics) {
-    lines.push("### 动态与张力");
-    if (dynamics.loudest_moment_seconds !== undefined) {
-      const m = Math.floor(dynamics.loudest_moment_seconds / 60);
-      const s = Math.round(dynamics.loudest_moment_seconds % 60);
-      lines.push(`- 🔊 最响段落: ${m}:${String(s).padStart(2, "0")} — 这里是情绪爆发点，留意编曲是否同步加厚`);
-    }
-    if (dynamics.energy_range) {
-      const range = dynamics.energy_range;
-      lines.push(`- 📊 动态幅度: ${range > 0.05 ? "较大——有强烈的强弱对比，编曲上可能有突然的抽空或爆发" : "较小——整体维持在一个密度，可能是风格选择（shoegaze/drone/minimal）"}`);
-    }
-    lines.push("");
-  }
-
-  // 4. 针对性的听点指引
-  lines.push("### 听的时候可以留意");
-  lines.push("");
-
-  const tips = [];
-
-  if (bpm && bpm < 90) {
-    tips.push("🎯 慢速曲，留意**空间**——乐器之间的距离感、混响的长度、留白的运用。");
-  }
-  if (bpm && bpm > 130) {
-    tips.push("🎯 快速曲，留意**紧密度**——鼓手/编程的精度、乐器之间的咬合、是否有故意的错位感。");
-  }
-  if (spectral.centroid_mean && spectral.centroid_mean < 1500) {
-    tips.push("🎯 音色篇暗，留意**低频**——贝斯的存在感、kick drum 的冲击力、是否有 sub-bass。");
-  }
-  if (spectral.centroid_mean && spectral.centroid_mean > 3000) {
-    tips.push("🎯 音色偏亮，留意**高频管理**——镲片/hi-hat 是否刺耳？人声嘶嘶声是否被处理？");
-  }
-  if (spectral.centroid_std && spectral.centroid_std > 1000) {
-    tips.push("🎯 音色变化大，留意**段落切换时的音色过渡**——是通过效果器变化？乐器增减？还是混音空间变化？");
-  }
-  if (energy_curve && energy_curve.length > 0) {
-    tips.push("🎯 留意**副歌段的低频**——是否比主歌更厚？这是混音常见的'副歌升级'手法。");
-  }
-  tips.push("🎯 留意**人声的距离感**——dry（贴脸）还是 wet（加混响/延迟拉远）？段落间有没有变化？");
-  tips.push("🎯 留意**立体声场**——哪些乐器在中间？哪些被放在左右？有没有声音在移动？");
-
-  lines.push(tips.slice(0, 5).join("\n"));
-  lines.push("");
-
-  // 5. 引导性问题
-  lines.push("### 回答这几个问题（帮助AI校准评分）");
-  lines.push("");
-  lines.push("1. **编曲**: 整体编曲是[稀疏 / 适中 / 密集]？有没有让你印象深刻的器乐编排细节？");
-  lines.push("2. **人声/演奏**: 表现是否打动你？有没有哪个音符/句子让你想倒回去重听？");
-  lines.push("3. **制作**: 整体声音质感是[干净通透 / 温暖模拟 / 粗糙有毛边 / 空间感强]？");
-  lines.push("4. **记忆点**: 这首歌最好的部分是？最差（或可改进）的部分是？");
-  lines.push("5. **类似作品**: 这张/首歌让你想起哪些其他艺术家或专辑？");
-
-  return lines.join("\n");
 }
 
 /**
@@ -669,16 +566,14 @@ export function extractPlatformRatings(researchData) {
  * @param {string} audioPath
  * @param {string} listeningAnswers
  * @param {Object} albumMetadata
- * @returns {Promise<Object>} { audioFeatures, listeningGuide, scoringPrompt }
+ * @returns {Promise<Object>} { audioFeatures, scoringPrompt }
  */
 export async function fullAnalysis(audioPath, listeningAnswers = "", albumMetadata = {}) {
   const audioFeatures = await extractAudioFeatures(audioPath);
-  const listeningGuide = generateListeningGuide(audioFeatures);
   const scoringPrompt = buildScoringPrompt(audioFeatures, listeningAnswers, albumMetadata);
 
   return {
     audioFeatures,
-    listeningGuide,
     scoringPrompt,
     ready: true,
   };
@@ -969,7 +864,13 @@ export function crossReference(localResult, externalSources = []) {
       ref.key_values[src.source] = src.key;
     }
   }
-  ref.sources = [...new Set(["local", ...externalSources.map(s => s.source)])];
+  // 只统计真正提供了 BPM 或 Key 的来源；
+  // Last.fm / Genius 等只提供时长/身份/专辑信息的元数据源不参与参数共识。
+  const contributing = new Set(["local"]);
+  for (const src of externalSources) {
+    if (src.bpm != null || src.key != null) contributing.add(src.source);
+  }
+  ref.sources = [...contributing];
 
   // BPM 共识: 取多数一致 (误差≤2)
   if (bpmVotes.length >= 2) {
@@ -1354,7 +1255,6 @@ export function buildAlbumCardData(albumMeta, tracks, hitTracks = []) {
 
 export default {
   extractAudioFeatures,
-  generateListeningGuide,
   buildScoringPrompt,
   fullAnalysis,
   calcHeatScore,

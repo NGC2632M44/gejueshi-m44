@@ -94,7 +94,7 @@ function parseHookTheoryHtml(html) {
   const bpm = text.match(/\bTempo\s+(\d+(?:\.\d+)?)\s*BPM/i)?.[1] || null;
   const meter = text.match(/\bMeter\s+(\d+\s*\/\s*\d+)/i)?.[1] || null;
   const genre = text.match(/\bGenre\s+(.+?)\s+(?:Melody Range|Mood|Most Used Chord|Other tags|Premium|We are processing|Access|Section|Key|Tempo|Meter)\b/i)?.[1] || null;
-  const chordText = text.match(/Most Important Chords\s+((?:The three most important chords|[^.])+?\.)/i)?.[1] || null;
+  const chordText = text.match(/Most Important Chords\s*:?\s*((?:The three most important chords|[^.])+?\.)/i)?.[1] || null;
   const chordNames = chordText?.match(/\(([A-G][^)]+?)\)/)?.[1] || null;
 
   if (!key && !bpm && !meter && !chordNames) return null;
@@ -156,6 +156,40 @@ function topChordProgression(localResult) {
   }
   const top = [...w.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k]) => k);
   return top.length ? top.join("-") : null;
+}
+
+/**
+ * 更稳的本地和弦进行：按 structure_segments（或整曲）取每段主导和弦，
+ * 去重相邻重复后返回字母与罗马数字两种形式。仍属“未外部验证”。
+ */
+function segmentChordProgression(localResult) {
+  const ev = localResult?.evidence?.["作曲"];
+  const events = Array.isArray(ev?.chord_events) ? ev.chord_events : [];
+  if (!events.length) return null;
+  const segments = (Array.isArray(ev?.structure_segments) && ev.structure_segments.length)
+    ? ev.structure_segments
+    : [{ start_sec: events[0].start_sec || 0, end_sec: events[events.length - 1].end_sec || 0 }];
+  const pickDominant = (start, end) => {
+    const w = new Map();
+    for (const e of events) {
+      const s = Math.max(e.start_sec || 0, start || 0);
+      const en = Math.min(e.end_sec || 0, end == null ? Infinity : end);
+      const d = en - s;
+      if (d > 0 && e.label) w.set(e.label, (w.get(e.label) || 0) + d);
+    }
+    return [...w.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+  };
+  const letters = segments
+    .map((seg) => pickDominant(seg.start_sec, seg.end_sec))
+    .filter(Boolean)
+    .filter((c, i, arr) => c !== arr[i - 1])
+    .slice(0, 5)
+    .join("-");
+  if (!letters) return null;
+  return {
+    letters,
+    roman: formatChordSequenceRoman(letters, localResult?.key) || null,
+  };
 }
 
 /**
@@ -297,20 +331,109 @@ async function querySongBPM(query, apiKey, songTitle, artistName) {
 
 /**
  * MusicBrainz 录音查找 (录音 MBID/时长)
+ * 使用 quoted Lucene 查询（recording + artist），避免“Wet & Wild”被拆成两个词。
  */
-async function queryMusicBrainz(query) {
+async function queryMusicBrainz(query, songTitle, artistName) {
+  const parsed = _parseTrackQuery(query);
+  const title = songTitle || parsed?.title || null;
+  const artist = artistName || parsed?.artist || null;
+  const esc = (s) => String(s || "").replace(/"/g, " ");
+  let lucene = title
+    ? `recording:"${esc(title)}"`
+    : `"${esc(query)}"`;
+  if (artist) lucene += ` AND artist:"${esc(artist)}"`;
   try {
-    const url = `https://musicbrainz.org/ws/2/recording/?query=${encodeURIComponent(query)}&fmt=json&limit=2`;
+    const url = `https://musicbrainz.org/ws/2/recording/?query=${encodeURIComponent(lucene)}&fmt=json&limit=3`;
     const res = await smartFetch(url, {
       headers: { "User-Agent": "Gejueshi/3.2 (MIR Cross-Ref; +http://localhost:3001)" },
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) throw new Error(`MusicBrainz HTTP ${res.status}`);
     const data = await res.json();
     const rec = data.recordings?.[0];
-    return rec ? { mbid: rec.id, title: rec.title, duration_ms: rec.length } : null;
+    return rec ? {
+      source: "musicbrainz",
+      mbid: rec.id,
+      track_name: rec.title || null,
+      artist_name: rec["artist-credit"]?.[0]?.name || null,
+      duration_ms: rec.length || null,
+    } : null;
   } catch (e) {
-    return null;
+    console.log(`    ♪ MusicBrainz: ${e.message}`);
+    throw e;
+  }
+}
+
+/**
+ * Last.fm track.getInfo（时长 / 听众 / 播放量 / 专辑 / 标签）
+ * 不提供 BPM/Key，只参与时长与身份校验。
+ */
+async function queryLastfmTrack(query, apiKey, songTitle, artistName) {
+  if (!apiKey) return null;
+  const parsed = _parseTrackQuery(query);
+  const artist = artistName || parsed?.artist || null;
+  const title = songTitle || parsed?.title || null;
+  if (!artist || !title) return null;
+  const url = `https://ws.audioscrobbler.com/2.0/?method=track.getInfo&api_key=${encodeURIComponent(apiKey)}&artist=${encodeURIComponent(artist)}&track=${encodeURIComponent(title)}&format=json&autocorrect=1`;
+  try {
+    const res = await smartFetch(url, { signal: AbortSignal.timeout(12000) });
+    if (!res.ok) throw new Error(`Last.fm HTTP ${res.status}`);
+    const data = await res.json();
+    const t = data?.track;
+    if (!t) return null;
+    return {
+      source: "lastfm",
+      track_name: t.name || title,
+      artist_name: t.artist?.name || artist,
+      duration_sec: t.duration ? Math.round(Number(t.duration) / 1000) : null,
+      album: t.album?.title || null,
+      listeners: t.listeners ? Number(t.listeners) : null,
+      playcount: t.playcount ? Number(t.playcount) : null,
+      tags: Array.isArray(t.toptags?.tag) ? t.toptags.tag.map(x => x.name).slice(0, 8) : [],
+      url: t.url || null,
+    };
+  } catch (e) {
+    console.log(`    ♪ Last.fm: ${e.message}`);
+    throw e;
+  }
+}
+
+/**
+ * Genius 搜索（标题 / 艺人 / 发行日 / 歌词页）
+ * 不提供 BPM/Key，参与身份与专辑信息校验；api.genius.com 需走代理。
+ */
+async function queryGeniusSong(query, token, songTitle, artistName) {
+  if (!token) return null;
+  const parsed = _parseTrackQuery(query);
+  const artist = artistName || parsed?.artist || null;
+  const title = songTitle || parsed?.title || query;
+  const url = `https://api.genius.com/search?q=${encodeURIComponent((artist ? artist + " " : "") + title)}`;
+  try {
+    const res = await proxiedFetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(12000),
+    });
+    if (!res.ok) throw new Error(`Genius HTTP ${res.status}`);
+    const data = await res.json();
+    const hits = (data?.response?.hits || []).filter(h => h.type === "song");
+    for (const h of hits) {
+      const r = h.result;
+      if (!r) continue;
+      const candidate = {
+        source: "genius",
+        track_name: r.title || null,
+        artist_name: r.primary_artist?.name || null,
+        url: r.url || null,
+        release_date: r.release_date_for_display || null,
+        album: r.album?.name || null,
+        page_views: r.stats?.pageviews ?? null,
+      };
+      if (_songIdentityMatches(candidate, { songTitle, artistName })) return candidate;
+    }
+    return null; // 全部未匹配 → no_match
+  } catch (e) {
+    console.log(`    ♪ Genius: ${e.message}`);
+    throw e;
   }
 }
 
@@ -334,21 +457,30 @@ export async function mirCrossReference(query, localResult, opts = {}) {
 
   // ── 并行查询所有源 ──
   const songbpmApiKey = opts.getsongbpmApiKey || process.env.GETSONGBPM_API_KEY || "";
-  const [hooktheory, songbpm, mb] = await Promise.allSettled([
+  const lastfmApiKey = opts.lastfmApiKey || process.env.LASTFM_API_KEY || "";
+  const geniusToken = opts.geniusToken || process.env.GENIUS_TOKEN || "";
+  const [hooktheory, songbpm, mb, lastfm, genius] = await Promise.allSettled([
     queryHookTheory(query, opts.songTitle, opts.artistName),
     querySongBPM(query, songbpmApiKey, opts.songTitle, opts.artistName),
-    queryMusicBrainz(query),
+    queryMusicBrainz(query, opts.songTitle, opts.artistName),
+    queryLastfmTrack(query, lastfmApiKey, opts.songTitle, opts.artistName),
+    queryGeniusSong(query, geniusToken, opts.songTitle, opts.artistName),
   ]);
 
   // 防串歌：先收齐外部结果，再按歌曲/艺人身份过滤
   const externalAll = [];
   if (hooktheory.value) externalAll.push(hooktheory.value);
   if (songbpm.value) externalAll.push(songbpm.value);
+  if (mb.value) externalAll.push(mb.value);
+  if (lastfm.value) externalAll.push(lastfm.value);
+  if (genius.value) externalAll.push(genius.value);
   for (const e of externalAll) {
     if (_songIdentityMatches(e, opts)) external.push(e);
   }
   const htIn = hooktheory.value && external.includes(hooktheory.value);
   const sbIn = songbpm.value && external.includes(songbpm.value);
+  const lfIn = lastfm.value && external.includes(lastfm.value);
+  const gnIn = genius.value && external.includes(genius.value);
 
   sources.push({ name: "hooktheory", status: htIn ? "ok" : (hooktheory.value ? "no_match" : (hooktheory.reason ? "error" : "no_data")) });
   if (sbIn) {
@@ -363,7 +495,43 @@ export async function mirCrossReference(query, localResult, opts = {}) {
     sources.push({ name: "songbpm", status: "no_data" });
   }
 
-  sources.push({ name: "musicbrainz", status: mb.value ? "found" : (mb.reason ? "error" : "no_match") });
+  sources.push({
+    name: "musicbrainz",
+    status: mb.value
+      ? (external.includes(mb.value) ? "found" : "no_match")
+      : (mb.reason ? "error" : "no_data"),
+    ...(mb.reason ? { detail: mb.reason?.message } : {}),
+  });
+  if (lfIn) {
+    sources.push({ name: "lastfm", status: "ok" });
+  } else if (!lastfmApiKey) {
+    sources.push({ name: "lastfm", status: "no_config" });
+  } else if (lastfm.value) {
+    sources.push({ name: "lastfm", status: "no_match" });
+  } else if (lastfm.reason) {
+    sources.push({ name: "lastfm", status: "error", detail: lastfm.reason?.message });
+  } else {
+    sources.push({ name: "lastfm", status: "no_data" });
+  }
+  if (gnIn) {
+    sources.push({ name: "genius", status: "ok" });
+  } else if (!geniusToken) {
+    sources.push({ name: "genius", status: "no_config" });
+  } else if (genius.value) {
+    sources.push({ name: "genius", status: "no_match" });
+  } else if (genius.reason) {
+    sources.push({ name: "genius", status: "error", detail: genius.reason?.message });
+  } else {
+    sources.push({ name: "genius", status: "no_data" });
+  }
+  if (songbpm.reason) {
+    const sp = sources.find(s => s.name === "songbpm");
+    if (sp) sp.detail = songbpm.reason?.message || "API 请求失败";
+  }
+  if (hooktheory.reason) {
+    const hp = sources.find(s => s.name === "hooktheory");
+    if (hp) hp.detail = hooktheory.reason?.message || "页面请求失败";
+  }
 
   // ── 交叉验证 ──
   const localData = {
@@ -377,20 +545,39 @@ export async function mirCrossReference(query, localResult, opts = {}) {
   const crossRef = crossReference(localData, external);
   const reliability = assessKeyReliability(localData, crossRef);
 
-  // 时长交叉校验（MusicBrainz 录音时长 vs 本地 ffprobe 原时长）
-  const mbDurSec = mb.value?.duration_ms ? mb.value.duration_ms / 1000 : null;
+  // 时长交叉校验（MusicBrainz / Last.fm vs 本地 ffprobe 原时长）
   const localDurSec = localResult?.duration_seconds != null ? Number(localResult.duration_seconds) : null;
+  const durationCandidates = [];
+  if (mb.value?.duration_ms) {
+    durationCandidates.push({ source: "MusicBrainz", seconds: mb.value.duration_ms / 1000, tolerance: 2 });
+  }
+  const lfDurSec = external.find(s => s.source === "lastfm" && s.duration_sec != null)?.duration_sec;
+  if (lfDurSec) {
+    durationCandidates.push({ source: "Last.fm", seconds: lfDurSec, tolerance: 4 });
+  }
+  // 优先 MusicBrainz；其次 Last.fm
+  durationCandidates.sort((a, b) => (a.source === "MusicBrainz" ? -1 : 1) - (b.source === "MusicBrainz" ? -1 : 1));
+  const extDur = durationCandidates[0] || null;
+  const matches = durationCandidates
+    .filter(c => Number.isFinite(localDurSec) && c.seconds != null)
+    .map(c => ({
+      source: c.source,
+      seconds: Math.round(c.seconds),
+      match: Math.abs(localDurSec - c.seconds) <= c.tolerance,
+    }));
   const duration_check = {
     local_seconds: Number.isFinite(localDurSec) ? localDurSec : null,
-    external_seconds: mbDurSec != null ? Math.round(mbDurSec) : null,
-    source: "MusicBrainz",
-    match: Number.isFinite(localDurSec) && mbDurSec != null ? Math.abs(localDurSec - mbDurSec) <= 2 : null,
+    external_seconds: extDur ? Math.round(extDur.seconds) : null,
+    source: extDur?.source || null,
+    sources: matches,
+    match: matches.length ? (matches.every(m => m.match) ? true : (matches.some(m => m.match) ? "partial" : false)) : null,
   };
 
   // ── 最终推荐值 ──
   const chordSource = external.find(s => s.chord_sequence);
   const netChordLetters = formatChordSequence(chordSource?.chord_sequence || null);
   const localChordLetters = topChordProgression(localResult);
+  const localSeg = segmentChordProgression(localResult);
   // 主和弦进行只采用外部已验证来源；本地高频和弦单独作为参考展示
   let chordDisplay = netChordLetters || null;
   let chordRomanMode = false;
@@ -438,7 +625,56 @@ export async function mirCrossReference(query, localResult, opts = {}) {
     reliability,
     recommended,
     chord_evidence,
-    local_chord_progression: localChordLetters,
+    local_chord_progression: localSeg?.letters || localChordLetters,
+    local_chord_roman: localSeg?.roman || null,
+    trust: {
+      bpm: {
+        value: recommended.bpm,
+        sources: crossRef.sources.length ? crossRef.sources.slice() : ["local"],
+        local_fusion: localResult?.bpm_fusion || null,
+        local_estimators: Array.isArray(localResult?.bpm_estimators) ? localResult.bpm_estimators : [],
+        confidence: crossRef.confidence_level === "high" ? "high" : crossRef.confidence_level === "medium" ? "medium" : (crossRef.sources.length > 1 ? "medium" : "low"),
+        note: crossRef.sources.length > 1 ? `多源一致（${crossRef.sources.length} 源）` : "仅本地单源，未外部验证",
+      },
+      key: {
+        value: recommended.key,
+        local_value: localResult?.key || null,
+        second_candidate: localResult?.key_second_candidate?.key_full || null,
+        local_methods_disagree: !!localResult?.key_methods_disagree,
+        local_sonara_key: localResult?.sonara?.key || null,
+        sources: crossRef.sources.length ? crossRef.sources.slice() : ["local"],
+        confidence: crossRef.confidence_level === "high" || crossRef.confidence_level === "medium" ? crossRef.confidence_level : (crossRef.sources.length > 1 ? "medium" : "low"),
+        note: (crossRef.confidence_level === "high" || crossRef.confidence_level === "medium")
+          ? `多源一致（${crossRef.sources.length} 源）`
+          : crossRef.sources.length > 1 ? "外部多数覆盖，但存在分歧"
+          : localResult?.key_methods_disagree
+            ? "仅本地单源且本地双特征分歧，未外部验证"
+            : (localResult?.sonara?.key && localResult?.key && localResult.sonara.key !== localResult.key)
+              ? `仅本地单源（sonara=${localResult.sonara.key} vs 本地=${localResult.key} 分歧），未外部验证`
+              : "仅本地单源，未外部验证",
+      },
+      duration: {
+        local_seconds: localDurSec,
+        external_seconds: duration_check.external_seconds,
+        external_sources: duration_check.sources || [],
+        match: duration_check.match,
+        confidence: duration_check.match === true ? "high" : duration_check.match === false ? "low" : "medium",
+        note: duration_check.match === true
+          ? `本地与 ${(duration_check.sources || []).map(s => s.source).join("、")} 一致`
+          : duration_check.match === false
+            ? `本地与外部不一致（可能版本不同）：${(duration_check.sources || []).map(s => `${s.source} ${s.seconds}s`).join("、")}`
+            : duration_check.match === "partial"
+              ? "部分外部源一致（版本差异）"
+              : "仅本地 ffprobe，无外部时长来源",
+      },
+      chord: {
+        value: recommended.chord_sequence,
+        verified: !!chordSource,
+        source: chordSource ? chordSource.source : (localSeg ? "local_sonara" : null),
+        confidence: chordSource ? "medium" : (localSeg ? "low" : "low"),
+        note: chordSource ? `外部来源（${chordSource.source}）` : (localSeg ? "本地算法（未外部验证）" : "无数据"),
+      },
+    },
     elapsed_ms: Date.now() - start,
     _cachedAt: Date.now(),
   };

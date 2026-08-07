@@ -1,5 +1,31 @@
 # Changelog
 
+## [3.27.0] - 2026-08-08
+
+### Added
+- 本地 BPM 多估计器融合：sonara（主）+ librosa beat_track + 拍间隔中位数/均值，
+  倍拍归一后聚类；sonara 有佐证时以其为准，避免“librosa 三票压过更可靠的 sonara”
+  （修复 Camera 从 126 被拉到 129.2 的回归）。
+- 调性双特征 K-S：HPCP（chroma_cqt）+ CENS（chroma_cens），输出
+  `key_methods` / `key_methods_disagree` / `key_candidates_top3`。
+- MIR 交叉核验新增 Last.fm（时长/听众/播放量）与 Genius（标题/艺人/发行日），
+  全部过歌曲/艺人身份过滤；MusicBrainz 改用 quoted Lucene 查询。
+- 数据可信度报告（trust）：BPM/Key/时长/和弦逐字段显示值、来源、高/中/低置信，
+  前端“数据可信度”区自动列出需人工确认项。
+- 新增 `docs/parser-architecture.md`：解析器方案 + 外部源目录 + 交叉核验规则。
+
+### Changed
+- `crossReference` 只统计真正提供 BPM/Key 的来源，Last.fm/Genius 等元数据源
+  不再虚增“多源一致”。
+- 时长校验多源化：MusicBrainz（±2s）+ Last.fm（±4s），部分一致标 partial。
+- SongBPM 标题搜索命中同名不同歌时经艺人过滤判 no_data（如实，不伪装）。
+- 删除听歌指引模块（前端/服务端/分析器），用户确认无用。
+
+### Fixed
+- MusicBrainz 超时/限流不再被误标 no_match（非 200 抛出 → error）。
+- Summer Fling 之类无外部 BPM/Key 来源的歌曲，本地值明确标 low 置信并在
+  note 中说明 sonara 与 HPCP/CENS 的分歧，不再把本地值标成 network 校准。
+
 ## [3.26.0] - 2026-08-07
 
 ### Fixed

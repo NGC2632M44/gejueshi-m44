@@ -413,69 +413,95 @@ def _safe_float(val, default=None):
 #  调性检测: Krumhansl-Schmuckler 算法
 # ═══════════════════════════════════════════════════
 
+def _ks_from_weighted_chroma(chroma_weighted: np.ndarray, method_label: str) -> dict:
+    """单个 chroma 特征 → Krumhansl-Schmuckler 候选排序。"""
+    keys = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"]
+    # Tempered Key Profiles (Gómez 2006)，比 K-S 原始 profile 更适合现代调性音乐
+    major_profile = np.array([1.0000, 0.0145, 0.4948, 0.0170, 0.6792, 0.3990, 0.0096, 0.8142, 0.0237, 0.3250, 0.0197, 0.1867])
+    minor_profile = np.array([1.0000, 0.0263, 0.3339, 0.5055, 0.0746, 0.3892, 0.0304, 0.6572, 0.1844, 0.2138, 0.0679, 0.1851])
+    major_profile /= np.sum(major_profile)
+    minor_profile /= np.sum(minor_profile)
+    chroma_weighted = chroma_weighted / max(np.sum(chroma_weighted), 1e-10)
+
+    all_candidates = []
+    for i in range(12):
+        rotated = np.roll(chroma_weighted, i)
+        major_corr = float(np.corrcoef(rotated, major_profile)[0, 1])
+        minor_corr = float(np.corrcoef(rotated, minor_profile)[0, 1])
+        all_candidates.append({"key": keys[i], "mode": "major", "correlation": major_corr})
+        all_candidates.append({"key": keys[i], "mode": "minor", "correlation": minor_corr})
+
+    all_candidates.sort(key=lambda x: x["correlation"], reverse=True)
+    best = all_candidates[0]
+    second = all_candidates[1] if len(all_candidates) > 1 else None
+    confidence = max(0, min(100, round((best["correlation"] + 1) * 50, 1)))
+    second_confidence = max(0, min(100, round((second["correlation"] + 1) * 50, 1))) if second else 0
+    return {
+        "method": method_label,
+        "best": best,
+        "second": second,
+        "confidence": confidence,
+        "second_confidence": second_confidence,
+        "top3": all_candidates[:3],
+    }
+
+
 def _detect_key_ks(audio: np.ndarray, sr: int) -> dict:
     """
-    HPCP + Tempered Key Profiles 调性检测 (复刻 Essentia KeyExtractor)。
-    比原始 K-S chroma_cqt 对失真/电子/半音色彩更鲁棒。
+    双特征 Krumhansl-Schmuckler 调性检测：
+    HPCP (chroma_cqt) + CENS (chroma_cens)，各自独立跑 K-S 后融合。
 
-    改进:
-    - HPCP (Harmonic Pitch Class Profile): 抑制谐波/噪音对音高轮廓的污染
-    - Tempered profiles (Gómez 2006): 比 K-S 原始 profile 更适合现代流行/电子
-    - 平行大小调歧义 + 第二候选 + 低置信 Camelot 置 null
-    参考文献: Gómez (2006) "Tonal Description of Music Audio Signals"; Essentia KeyExtractor
+    依据：
+    - Gómez (2006) Tempered Profiles / Essentia KeyExtractor
+    - MIREX 结论：单算法存在 relative/parallel/chromatic 错误，多特征投票可降低
+      虚高置信的“错得很有把握”。
     """
     try:
         import librosa
 
-        # ── HPCP 计算 (Harmonic Pitch Class Profile) ──
-        # HPCP 是 chroma 的增强版: 泛音折叠、谐波加权、噪音抑制
-        # 参数对齐 Essentia KeyExtractor 默认值
-        chroma = librosa.feature.chroma_cqt(
+        rms = librosa.feature.rms(y=audio, frame_length=FFT_SIZE, hop_length=HOP_LENGTH)
+
+        def _weighted(chroma):
+            rms_c = rms[:, :chroma.shape[1]] if rms.shape[1] > chroma.shape[1] else rms
+            weights = np.squeeze(rms_c) if rms_c.shape[1] == chroma.shape[1] else np.ones(chroma.shape[1])
+            return np.average(chroma, axis=1, weights=weights[:chroma.shape[1]])
+
+        chroma_hpcp = librosa.feature.chroma_cqt(
             y=audio, sr=sr, hop_length=HOP_LENGTH,
             fmin=32.7, n_chroma=12, bins_per_octave=36,
-            threshold=0.001,  # 噪音门限 (Essentia: low level noise floor)
+            threshold=0.001,
         )
+        try:
+            chroma_cens = librosa.feature.chroma_cens(
+                y=audio, sr=sr, hop_length=HOP_LENGTH, n_chroma=12,
+            )
+        except Exception:
+            chroma_cens = None
 
-        # 时间加权: 响度大的帧权重高 (和弦进行通常落在强拍)
-        rms = librosa.feature.rms(y=audio, frame_length=FFT_SIZE, hop_length=HOP_LENGTH)
-        rms = rms[:, :chroma.shape[1]] if rms.shape[1] > chroma.shape[1] else rms
-        weights = np.squeeze(rms) if rms.shape[1] == chroma.shape[1] else np.ones(chroma.shape[1])
-        chroma_weighted = np.average(chroma, axis=1, weights=weights[:chroma.shape[1]])
+        methods = [
+            _ks_from_weighted_chroma(_weighted(chroma_hpcp), "HPCP chroma_cqt"),
+        ]
+        if chroma_cens is not None:
+            methods.append(_ks_from_weighted_chroma(_weighted(chroma_cens), "CENS chroma_cens"))
 
-        # ── Tempered Key Profiles (Gómez 2006) ──
-        # 比 K-S 原始 profile (1986) 更适合现代调性音乐
-        # C C# D D# E F F# G G# A A# B
-        major_profile = np.array([1.0000, 0.0145, 0.4948, 0.0170, 0.6792, 0.3990, 0.0096, 0.8142, 0.0237, 0.3250, 0.0197, 0.1867])
-        minor_profile = np.array([1.0000, 0.0263, 0.3339, 0.5055, 0.0746, 0.3892, 0.0304, 0.6572, 0.1844, 0.2138, 0.0679, 0.1851])
+        primary = methods[0]
+        best = primary["best"]
+        second = primary["second"]
+        confidence = primary["confidence"]
+        second_confidence = primary["second_confidence"]
 
-        # 归一化
-        major_profile /= np.sum(major_profile)
-        minor_profile /= np.sum(minor_profile)
-        chroma_weighted /= max(np.sum(chroma_weighted), 1e-10)
+        # ── 双特征一致/分歧 ──
+        methods_disagree = False
+        if len(methods) >= 2:
+            m2 = methods[1]["best"]
+            if m2["key"] != best["key"] or m2["mode"] != best["mode"]:
+                methods_disagree = True
+                # 若第二特征的第一候选等于主特征的第二候选，提示候选切换
+                if second and m2["key"] == second["key"] and m2["mode"] == second["mode"]:
+                    pass  # 保持主特征结果，但 note 中说明次特征支持第二候选
 
+        # ── 平行大小调歧义 ──
         keys = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"]
-
-        # 收集所有候选的相关系数
-        all_candidates = []
-        for i in range(12):
-            rotated = np.roll(chroma_weighted, i)
-            major_corr = float(np.corrcoef(rotated, major_profile)[0, 1])
-            minor_corr = float(np.corrcoef(rotated, minor_profile)[0, 1])
-            all_candidates.append({"key": keys[i], "mode": "major", "correlation": major_corr})
-            all_candidates.append({"key": keys[i], "mode": "minor", "correlation": minor_corr})
-
-        # 按相关系数降序排列
-        all_candidates.sort(key=lambda x: x["correlation"], reverse=True)
-        best = all_candidates[0]
-        second = all_candidates[1] if len(all_candidates) > 1 else None
-
-        # 置信度映射: Pearson r ∈ [-1, +1] → 0~100
-        confidence = max(0, min(100, round((best["correlation"] + 1) * 50, 1)))
-        second_confidence = max(0, min(100, round((second["correlation"] + 1) * 50, 1))) if second else 0
-
-        # ── 平行大小调歧义检测 ──
-        # 平行大小调: 共享全部音级，仅主音差 3 个半音 (minor 3rd down)
-        # 如 C major ↔ A minor, G major ↔ E minor
         parallel_mode_ambiguity = False
         if second:
             minor_third_down = (keys.index(best["key"]) - 3) % 12
@@ -488,7 +514,6 @@ def _detect_key_ks(audio: np.ndarray, sr: int) -> dict:
             if is_parallel and corr_diff < 0.08:
                 parallel_mode_ambiguity = True
 
-        # Camelot: 低置信度 (<40) 置 null
         camelot = _camelot_code(best["key"], best["mode"]) if confidence >= 40 else None
 
         return {
@@ -497,12 +522,10 @@ def _detect_key_ks(audio: np.ndarray, sr: int) -> dict:
             "key_full": f"{best['key']} {best['mode']}",
             "key_confidence": confidence,
             "key_correlation": round(best["correlation"], 4),
-            "key_method": "HPCP + Tempered Profiles (Gómez 2006) — 复刻 Essentia KeyExtractor + parallel mode detection + second candidate",
+            "key_method": "HPCP + CENS 双特征 K-S (Gómez 2006 profiles)",
             "camelot": camelot,
             "camelot_low_confidence": confidence < 40,
-            # 置信虚高警告: K-S 对失真/电子流行常给出高相关但错调
-            "key_confidence_note": "K-S 相关系数置信不等于真实调性吻合度。失真吉他/噪声铺底/密集半音装饰可导致虚高置信的错误结果。请同时参考第二候选与外部交叉验证。",
-            # 第二候选
+            "key_confidence_note": "K-S 相关系数置信不等于真实调性吻合度。失真吉他/噪声铺底/密集半音装饰可导致虚高置信的错误结果。双特征分歧时请以外部交叉验证为准。",
             "key_second_candidate": {
                 "key": second["key"] if second else None,
                 "mode": second["mode"] if second else None,
@@ -510,10 +533,23 @@ def _detect_key_ks(audio: np.ndarray, sr: int) -> dict:
                 "key_confidence": second_confidence,
                 "correlation": round(second["correlation"], 4) if second else None,
             } if second else None,
-            # 平行调歧义
             "parallel_mode_ambiguity": parallel_mode_ambiguity,
-            # 调性歧义: 第一/第二候选相关系数差值 < 0.1 → 无论置信高低都标记
             "key_ambiguity": abs(best["correlation"] - (second["correlation"] if second else 0)) < 0.1,
+            "key_methods_disagree": methods_disagree,
+            "key_methods": [
+                {
+                    "method": m["method"],
+                    "best": f"{m['best']['key']} {m['best']['mode']}",
+                    "correlation": round(m["best"]["correlation"], 4),
+                    "second": f"{m['second']['key']} {m['second']['mode']}" if m.get("second") else None,
+                    "second_correlation": round(m["second"]["correlation"], 4) if m.get("second") else None,
+                }
+                for m in methods
+            ],
+            "key_candidates_top3": [
+                {"key": c["key"], "mode": c["mode"], "correlation": round(c["correlation"], 4)}
+                for c in primary["top3"]
+            ],
         }
     except Exception as e:
         return {"key": None, "mode": None, "key_full": None, "key_confidence": 0,
@@ -583,6 +619,9 @@ def _detect_bpm_librosa(audio: np.ndarray, sr: int) -> dict:
         bpm = round(bpm_raw, 1) if bpm_raw > 0 else None
 
         confidence = 0.0
+        bpm_interval_median = None
+        bpm_interval_mean = None
+        interval_confidence = 0.0
         if beats is not None and len(beats) > 1:
             beat_times = librosa.frames_to_time(beats, sr=sr, hop_length=HOP_LENGTH)
             intervals = np.diff(beat_times)
@@ -592,6 +631,17 @@ def _detect_bpm_librosa(audio: np.ndarray, sr: int) -> dict:
                 iqr = q75 - q25
                 conf = max(0, 100 - (iqr / expected * 100))
                 confidence = round(min(100, conf), 1)
+            valid = intervals[intervals > 0.15]
+            if len(valid) > 2:
+                med = float(np.median(valid))
+                mean = float(np.mean(valid))
+                if med > 0:
+                    bpm_interval_median = round(60.0 / med, 1)
+                if mean > 0:
+                    bpm_interval_mean = round(60.0 / mean, 1)
+                q75i, q25i = np.percentile(valid, [75, 25])
+                iqr_i = q75i - q25i
+                interval_confidence = round(min(100, max(0, 100 - (iqr_i / med * 100))), 1)
 
         # ── 倍拍候选 ──
         bpm_half = round(bpm / 2, 1) if bpm > 0 else None
@@ -639,6 +689,9 @@ def _detect_bpm_librosa(audio: np.ndarray, sr: int) -> dict:
         return {
             "bpm": bpm if bpm > 0 else None,
             "bpm_confidence": confidence,
+            "bpm_interval_median": bpm_interval_median,
+            "bpm_interval_mean": bpm_interval_mean,
+            "bpm_interval_confidence": interval_confidence,
             "bpm_candidates": {
                 "half": bpm_half,
                 "half_confidence": round(min(100, half_conf), 1),
@@ -652,6 +705,103 @@ def _detect_bpm_librosa(audio: np.ndarray, sr: int) -> dict:
         }
     except Exception as e:
         return {"bpm": None, "bpm_confidence": 0, "bpm_error": str(e), "bpm_octave_risk": None}
+
+
+# ═══════════════════════════════════════════════════
+#  BPM 多估计器融合
+# ═══════════════════════════════════════════════════
+
+def _fuse_bpm_estimators(estimators: list) -> tuple:
+    """
+    多估计器 BPM 融合：
+    1. 每个估计器先做倍拍归一化（÷2/×2 归入 70-190 窗口）；
+    2. 按 ±3 BPM 聚类，取估计器数量最多的簇；
+    3. sonara 为主候选：只要它与至少一个其它估计器同簇，就以 sonara 值为准
+       （librosa 的 beat_track 存在倍拍/偏移误差，投票多数未必正确）；
+    4. 无 sonara 时取多数簇均值；sonara 孤军时保留 sonara 但标记分歧。
+
+    返回 (fused_bpm, meta)。fused_bpm 可能为 None。
+    """
+    entries = []
+    for est in estimators or []:
+        val = est.get("bpm")
+        if not val or val <= 0:
+            continue
+        entries.append({
+            "name": est.get("name", "?"),
+            "raw": round(float(val), 1),
+            "confidence": float(est.get("confidence", 0) or 0),
+        })
+    if not entries:
+        return None, {"estimators": [], "fusion": "none", "note": "无可用 BPM 估计器"}
+
+    normalized = []
+    for e in entries:
+        v = e["raw"]
+        while v > 190:
+            v /= 2
+        while v < 70:
+            v *= 2
+        normalized.append({**e, "norm": round(v, 1)})
+
+    clusters = []
+    for e in normalized:
+        found = None
+        for cl in clusters:
+            if abs(cl["value"] - e["norm"]) <= 3:
+                found = cl
+                break
+        if found is None:
+            clusters.append({"value": e["norm"], "members": []})
+            found = clusters[-1]
+        found["members"].append(e)
+
+    clusters.sort(key=lambda c: (-len(c["members"]), -sum(m["confidence"] for m in c["members"])))
+    top = clusters[0]
+    sonara = next((m for m in normalized if m["name"] == "sonara"), None)
+    sonara_cluster = None
+    if sonara:
+        sonara_cluster = next((c for c in clusters if any(m["name"] == "sonara" for m in c["members"])), None)
+
+    octave_risk = False
+    if sonara and sonara_cluster:
+        fused = sonara["norm"]
+        sc_count = len(sonara_cluster["members"])
+        other_top = None if sonara_cluster is top else top
+        if sc_count >= 2 and other_top is None:
+            fusion = "consensus"
+            winner = [m["name"] for m in sonara_cluster["members"]]
+        elif sc_count >= 2:
+            fusion = "partial"
+            winner = [m["name"] for m in sonara_cluster["members"]]
+            octave_risk = True
+        else:
+            fusion = "disagree"
+            winner = ["sonara"]
+            octave_risk = True
+        note = ("sonara 主候选 + librosa 佐证（同簇）" if fusion == "consensus"
+                else "sonara 与 librosa 分歧，保留 sonara，需外部验证")
+    else:
+        fused = round(float(np.mean([m["norm"] for m in top["members"]])), 1)
+        fusion = "consensus" if len(top["members"]) >= 2 else "single"
+        winner = [m["name"] for m in top["members"]]
+        if len(clusters) >= 2:
+            second = clusters[1]
+            if second["members"] and len(second["members"]) >= len(top["members"]) * 0.6:
+                octave_risk = True
+        note = "多估计器倍拍归一后取多数簇" if fusion != "single" else "仅单一估计器可用"
+
+    meta = {
+        "estimators": [
+            {"name": m["name"], "raw_bpm": m["raw"], "normalized_bpm": m["norm"], "confidence": round(m["confidence"], 1)}
+            for m in normalized
+        ],
+        "fusion": fusion,
+        "octave_risk": octave_risk,
+        "winner": winner,
+        "note": note,
+    }
+    return fused, meta
 
 
 # ═══════════════════════════════════════════════════
@@ -1448,9 +1598,10 @@ def analyze(filepath: str, deep: bool = False, output_path: Optional[str] = None
     except Exception:
         pass
 
-    # ── BPM: 首选 sonara (Rust 引擎), 回退 librosa；同时收集五维证据特征 ──
-    bpm_data = None
+    # ── BPM: sonara + librosa 双引擎始终运行，再做多估计器融合 ──
     sonara_evidence = {}
+    bpm_sonara = None
+    bpm_sonara_conf = 0.0
     try:
         import sonara
         sr_result = sonara.analyze_file(
@@ -1461,22 +1612,14 @@ def analyze(filepath: str, deep: bool = False, output_path: Optional[str] = None
             bpm_min=70.0, bpm_max=190.0,
         )
         bpm_sonara = round(float(sr_result.get('bpm', 0)), 1) if sr_result.get('bpm') else None
-        if bpm_sonara and bpm_sonara > 0:
-            bpm_data = {
-                "bpm": bpm_sonara,
-                "bpm_confidence": round(float(sr_result.get('bpm_confidence', 90)), 1),
-                "bpm_candidates": {"half": round(bpm_sonara / 2, 1), "half_confidence": 0, "double": round(bpm_sonara * 2, 1), "double_confidence": 0},
-                "bpm_octave_risk": False,
-                "bpm_deviation_risk": False,
-                "bpm_confidence_note": "sonara Rust 引擎 (multi-feature beat tracking, ~4ms/track)",
-                "bpm_method": "sonara Rust engine (bpm window 70-190)",
-            }
-            # 同时用 sonara 的key作为 MIR 参考源
-            sr_key = sr_result.get('key')
-            sr_key_conf = sr_result.get('key_confidence')
-            sr_camelot = sr_result.get('key_camelot')
-            if sr_key and not hasattr(analyze, '_sonara_key'):
-                analyze._sonara_key = {"key": sr_key, "confidence": sr_key_conf, "camelot": sr_camelot}
+        raw_sonara_conf = float(sr_result.get('bpm_confidence', 0) or 0)
+        bpm_sonara_conf = round(raw_sonara_conf * 100, 1) if 0 < raw_sonara_conf <= 1 else round(raw_sonara_conf, 1)
+        # 同时用 sonara 的 key 作为 MIR 参考源
+        sr_key = sr_result.get('key')
+        sr_key_conf = sr_result.get('key_confidence')
+        sr_camelot = sr_result.get('key_camelot')
+        if sr_key and not hasattr(analyze, '_sonara_key'):
+            analyze._sonara_key = {"key": sr_key, "confidence": sr_key_conf, "camelot": sr_camelot}
         sonara_evidence = {
             "engine_version": sr_result.get('provenance'),
             "bpm": bpm_sonara,
@@ -1503,8 +1646,37 @@ def analyze(filepath: str, deep: bool = False, output_path: Optional[str] = None
         }
     except Exception:
         pass  # sonara 不可用 (MP3解码失败/文件损坏)，静默回退到 librosa
-    if bpm_data is None:
-        bpm_data = _detect_bpm_librosa(audio, sr)
+
+    librosa_bpm_data = _detect_bpm_librosa(audio, sr)
+    fused_bpm, bpm_fusion_meta = _fuse_bpm_estimators([
+        {"name": "sonara", "bpm": bpm_sonara, "confidence": bpm_sonara_conf},
+        {"name": "librosa_beat_track", "bpm": librosa_bpm_data.get("bpm"), "confidence": librosa_bpm_data.get("bpm_confidence", 0)},
+        {"name": "librosa_interval_median", "bpm": librosa_bpm_data.get("bpm_interval_median"), "confidence": librosa_bpm_data.get("bpm_interval_confidence", 0)},
+        {"name": "librosa_interval_mean", "bpm": librosa_bpm_data.get("bpm_interval_mean"), "confidence": librosa_bpm_data.get("bpm_interval_confidence", 0)},
+    ])
+    if fused_bpm:
+        fusion_state = bpm_fusion_meta.get("fusion", "single")
+        bpm_data = {
+            "bpm": fused_bpm,
+            "bpm_confidence": max(
+                [m["confidence"] for m in bpm_fusion_meta.get("estimators", []) if m["name"] in bpm_fusion_meta.get("winner", [])] or [0]
+            ),
+            "bpm_candidates": {
+                "half": round(fused_bpm / 2, 1),
+                "half_confidence": 0,
+                "double": round(fused_bpm * 2, 1),
+                "double_confidence": 0,
+            },
+            "bpm_octave_risk": bool(bpm_fusion_meta.get("octave_risk")) if fusion_state == "consensus" else bool(librosa_bpm_data.get("bpm_octave_risk")),
+            "bpm_deviation_risk": False,
+            "bpm_estimators": bpm_fusion_meta.get("estimators", []),
+            "bpm_fusion": bpm_fusion_meta.get("fusion", "single"),
+            "bpm_fusion_note": bpm_fusion_meta.get("note", ""),
+            "bpm_confidence_note": "bpm_confidence 是对节拍脉冲规整度的内部打分，不等于与真实 BPM 的吻合度；多估计器融合结果仍需外部交叉验证。",
+            "bpm_method": "sonara + librosa (beat_track / interval median / interval mean) 多估计器融合",
+        }
+    else:
+        bpm_data = librosa_bpm_data
     if sonara_evidence:
         engine = "sonara+librosa"
 
@@ -1641,6 +1813,8 @@ def analyze(filepath: str, deep: bool = False, output_path: Optional[str] = None
         "bpm_candidates": bpm_data.get("bpm_candidates", {}),
         "bpm_octave_risk": bpm_data.get("bpm_octave_risk", False),
         "bpm_method": bpm_data.get("bpm_method", "librosa beat tracking"),
+        "bpm_estimators": bpm_data.get("bpm_estimators", []),
+        "bpm_fusion": bpm_data.get("bpm_fusion", "single"),
 
         "key": key_data.get("key_full"),
         "key_name": key_data.get("key"),
@@ -1652,6 +1826,9 @@ def analyze(filepath: str, deep: bool = False, output_path: Optional[str] = None
         "parallel_mode_ambiguity": key_data.get("parallel_mode_ambiguity", False),
         "camelot": key_data.get("camelot"),
         "camelot_low_confidence": key_data.get("camelot_low_confidence", False),
+        "key_methods": key_data.get("key_methods", []),
+        "key_methods_disagree": key_data.get("key_methods_disagree", False),
+        "key_candidates_top3": key_data.get("key_candidates_top3", []),
 
         # 多源校验字段
         "source_count": 1,

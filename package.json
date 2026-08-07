@@ -1,13 +1,13 @@
 {
   "name": "gejueshi",
-  "version": "3.26.0",
+  "version": "3.27.0",
   "description": "歌掘士 M44 - 音乐五维分析工作台（词/曲/编/唱/混）",
   "type": "module",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node --test services/test_ai.js services/test_keys.js services/test_songbpm_parser.js services/test_scoring_prompt.js services/test_album_flow.js services/test_research_rank.js services/test_calibrate.js services/test_prompt_calibration.js services/test_sanitize.js services/test_final_word.js",
+    "test": "node --test services/test_ai.js services/test_keys.js services/test_songbpm_parser.js services/test_scoring_prompt.js services/test_album_flow.js services/test_research_rank.js services/test_calibrate.js services/test_prompt_calibration.js services/test_sanitize.js services/test_final_word.js services/test_mir_cross_ref.js",
     "test:py": "python -m pytest scripts/ -q"
   },
   "keywords": [

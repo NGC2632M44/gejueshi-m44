@@ -67,6 +67,19 @@ python -m pytest scripts/ -q
 
 音频特征计算参考 ITU-R BS.1770-4、EBU R128、Lerch (2012) 与 Katz (2015)。
 
+## 解析器与交叉核验（v3.27）
+
+- 本地 BPM：sonara（主）+ librosa beat_track + 拍间隔中位数/均值 多估计器融合，
+  倍拍归一后聚类，sonara 有佐证时优先；
+- 本地调性：HPCP + CENS 双特征 K-S，输出多候选与“双特征分歧”标记；
+- 本地和弦：只作“未验证参考”，外部 Hooktheory 命中才作为主和弦进行；
+- MIR 交叉核验覆盖 Hooktheory / SongBPM / MusicBrainz / Last.fm / Genius，
+  每个来源在界面显示真实状态（✅ 可用 / ○ 无数据 / ✕ 失败 / ○ 已定位 / △ 未配置）；
+- 可信度报告：BPM/Key/时长/和弦 逐字段给出高/中/低置信与来源，
+  无外部验证时如实标注 low，不冒充 network 校准。
+
+详细设计见 `docs/parser-architecture.md`。
+
 ## 回链
 
 本工具在界面与卡片中引用以上公开数据源时均保留来源链接；API 使用遵循各平台服务条款。
