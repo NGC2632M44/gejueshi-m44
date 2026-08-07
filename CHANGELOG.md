@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.29.2] - 2026-08-08
+
+### Fixed
+- PROFESSIONAL RATINGS · REVIEWS 固定两列展示（不再因长媒体名退化为单列）。
+- 数据页 1 增加“CHARTS · TOP”：按影响力排序的前 6 条榜单
+  （US Billboard 200 / UK Albums 等）与专业评分同页显示；
+  其余榜单继续放在数据页 2/3，全部展示不截断。
+
 ## [3.29.1] - 2026-08-08
 
 ### Fixed

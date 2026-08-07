@@ -62,3 +62,17 @@
 
 实测《Music, Fashion, Film》：页 1 = 参数 + ADM 8.0 + 14 条媒体评分；
 页 2 = 前 18 条榜单；页 3 = 剩余 11 条榜单。全部页面 < 750px，无溢出。
+
+## 3.29.2 修正（2026-08-08）
+
+用户反馈：数据页上看不到任何 charts；REVIEWS 应该两列。
+
+修正：
+- REVIEWS 固定两列（去掉按媒体名长度退化成单列的逻辑）；
+- 数据页 1 新增 “CHARTS · TOP”，固定展示影响力前 6 条
+  （US Billboard 200、UK Albums、US Top Rock/Alt、Germany、France、Australia）；
+- 其余榜单仍按影响力排序分页放数据页 2/3，全部展示。
+
+实测《Music, Fashion, Film》：
+页 1 = 参数 + ADM 8.0 + 14 条媒体评分（两列）+ TOP 6 榜单（两列）；
+页 2 = 其余 18 条榜单；页 3 = 剩余 5 条榜单。均 < 750px。
