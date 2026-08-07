@@ -180,18 +180,23 @@ export function parseSongBPMHtml(html) {
  * 因此不做自动定位，用户粘贴完整 URL 后解析页面。
  */
 export async function querySongBPMByUrl(songbpmUrl) {
-  try {
-    const res = await fetch(songbpmUrl, {
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36" },
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!res.ok) return null;
-    const html = await res.text();
-    return { ...parseSongBPMHtml(html), url: songbpmUrl };
-  } catch (e) {
-    console.log(`   ⚠️ SongBPM: ${e.message}`);
-    return null;
+  const headers = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36" };
+  const attempts = [
+    () => fetch(songbpmUrl, { headers, signal: AbortSignal.timeout(12000) }),
+    () => smartFetch(songbpmUrl, { headers, signal: AbortSignal.timeout(12000) }),
+  ];
+  for (const fn of attempts) {
+    try {
+      const res = await fn();
+      if (res.ok) {
+        const html = await res.text();
+        return { ...parseSongBPMHtml(html), url: songbpmUrl };
+      }
+    } catch (e) {
+      console.log(`   ⚠️ SongBPM: ${e.message}`);
+    }
   }
+  return null;
 }
 
 /**

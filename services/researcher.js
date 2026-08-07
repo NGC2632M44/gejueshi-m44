@@ -81,9 +81,6 @@ export async function researchAlbum(query, opts = {}) {
     }).catch(e=>r.errors.push(`Wikipedia: ${e.message}`)),
     fetchMusicBrainz(query).then(v=>r.musicbrainz=v).catch(e=>r.errors.push(`MusicBrainz: ${e.message}`)),
     fetchiTunes(query).then(v=>r.itunes=v).catch(e=>r.errors.push(`iTunes: ${e.message}`)),
-    // RYM/AOTY 通过搜索引擎获取（不直接爬目标站）
-    // RYM/AOTY/Discogs via DDG — DDG 已不可用 (202 redirect / timeout)，这些源暂时下线
-    fetchAnyDecentMusic(query).then(v=>r.anyDecentMusic=v).catch(e=>r.errors.push(`AnyDecentMusic: ${e.message}`)),
   ];
   if (lfKey) tasks.push(fetchLastfm(query,lfKey).then(v=>r.lastfm=v).catch(e=>r.errors.push(`Last.fm: ${e.message}`)));
   if (dgToken) tasks.push(fetchDiscogsAPI(query,dgToken).then(v=>r.discogs=v).catch(e=>r.errors.push(`Discogs: ${e.message}`)));
@@ -91,6 +88,12 @@ export async function researchAlbum(query, opts = {}) {
   await Promise.allSettled(tasks);
   // 若 Wikipedia 抓到的是艺人页而非专辑页，用已解析的专辑名（Discogs/Last.fm）重查
   const resolvedAlbum = r.discogs?.results?.[0]?.title || r.lastfm?.title || null;
+  // ADM 用专辑名搜索（单曲通常搜不到；全查询“专辑+艺人”会无结果）
+  try {
+    r.anyDecentMusic = await fetchAnyDecentMusic(resolvedAlbum || query);
+  } catch (e) {
+    r.errors.push(`AnyDecentMusic: ${e.message}`);
+  }
   if (resolvedAlbum && (!r.wikipedia?.title || !new RegExp(resolvedAlbum.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(r.wikipedia.title))) {
     const wp2 = await fetchWikipedia(resolvedAlbum);
     if (wp2 && /album|song|single/i.test(wp2.title + " " + (wp2.extract || ""))) {
@@ -835,7 +838,7 @@ function parseReviewScores(receptionText) {
 
 async function fetchAnyDecentMusic(query) {
   try {
-    // 直接搜索
+    // ADM 以专辑/排行榜为主，单曲通常搜不到；用专辑查询词搜索
     const searchUrl = `http://www.anydecentmusic.com/search-results.aspx?search=${encodeURIComponent(query)}`;
     const res = await proxyFetch(searchUrl, {
       headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", "Accept": "text/html" },
@@ -844,15 +847,31 @@ async function fetchAnyDecentMusic(query) {
     if (!res.ok) return null;
     const html = await res.text();
 
-    // 提取搜索结果中的第一个专辑链接
-    const linkMatch = html.match(/<a[^>]*href="\/review\/(\d+)[^"]*"[^>]*>([\s\S]*?)<\/a>/i);
-    if (!linkMatch) return null;
+    // 收集所有 review 链接并按查询词匹配度选最相关（搜索页顶部是“最近高评”而非结果）
+    const qTokens = (query || "").toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, " ").split(/\s+/).filter((w) => w.length > 2);
+    const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, " ");
+    const candidates = [];
+    const seen = new Set();
+    let linkMatch;
+    const linkRe = /<a[^>]*href="(\/review\/(\d+)[^"']*)"[^>]*>([\s\S]*?)<\/a>/gi;
+    while ((linkMatch = linkRe.exec(html)) !== null) {
+      if (seen.has(linkMatch[1])) continue;
+      seen.add(linkMatch[1]);
+      const anchor = linkMatch[3].replace(/<[^>]*>/g, "").trim();
+      const hay = norm(linkMatch[1] + " " + anchor);
+      let score = 0;
+      for (const t of qTokens) if (hay.includes(t)) score += 2;
+      candidates.push({ path: linkMatch[1], id: linkMatch[2], score, anchor });
+    }
+    candidates.sort((a, b) => b.score - a.score);
+    const best = candidates[0];
+    if (!best) return null;
 
-    const reviewId = linkMatch[1];
-    const titleGuess = linkMatch[2].replace(/<[^>]*>/g, "").trim();
+    const reviewPath = best.path;
+    const reviewId = best.id;
 
     // 获取评分详情
-    const reviewUrl = `http://www.anydecentmusic.com/review/${reviewId}.aspx`;
+    const reviewUrl = `http://www.anydecentmusic.com${reviewPath}`;
     const revRes = await proxyFetch(reviewUrl, {
       headers: { "User-Agent": "Mozilla/5.0", "Accept": "text/html" },
       signal: AbortSignal.timeout(12000),
@@ -860,37 +879,46 @@ async function fetchAnyDecentMusic(query) {
     if (!revRes.ok) return null;
     const revHtml = await revRes.text();
 
-    // 解析聚合评分 (总评分数, 如 7.2)
-    const overallMatch = revHtml.match(/<span[^>]*class="[^"]*rating[^"]*"[^>]*>([\d.]+)<\/span>/i)
+    // 解析聚合评分（<p class="score">7.2</p>，ADM rating）
+    const overallMatch = revHtml.match(/<p[^>]*class="[^"]*score[^"]*"[^>]*>\s*([\d.]+)\s*<\/p>/i)
+      || revHtml.match(/ADM rating[^<]*<[^>]*>[\s\S]*?([\d.]+)/i)
       || revHtml.match(/(\d\.\d)\s*<\/span>/i);
     const overall = overallMatch ? parseFloat(overallMatch[1]) : null;
 
-    // 解析 Chart 中的高亮评分 (通常在前几个 <li>)
-    const chartMatch = revHtml.match(/<ul[^>]*class="[^"]*chart[^"]*list[^"]*"[\s\S]*?<\/ul>/i);
-    const chartHtml = chartMatch ? chartMatch[0] : "";
-
+    // 解析媒体个体评分：<span class="data_rating">6.7</span> ... <span>Pitchfork</span> ... <p>quote</p> ... Read Review
     const individualScores = [];
-    const scoreRegex = /<strong[^>]*>([^<]+)<\/strong>\s*<span[^>]*>[\s\S]*?(\d+\.?\d*)\s*\/?\s*(\d+)?/gi;
-    // 更宽松的匹配: 任何 "PublicationName" 后跟分数的模式
-    const looseRegex = />([A-Z][A-Za-z\s&]+?)\s*<\/\w+>\s*[<\w\s="'>]*?(\d\.?\d*)\s*\/?\s*(\d+)?/gi;
-
+    const itemRegex = /<li[^>]*class="[^"]*review_item[^"]*"[\s\S]*?<span[^>]*class="data_rating"[^>]*>\s*([\d.]+)\s*<\/span>[\s\S]*?<h4[^>]*>\s*[\d.]+\s*\|[^<]*<span[^>]*>([^<]+)<\/span>[\s\S]*?<p>\s*([\s\S]*?)\s*<\/p>[\s\S]*?<a[^>]*href='([^']+)'/gi;
     let m;
-    while ((m = looseRegex.exec(chartHtml)) !== null) {
-      const pub = m[1].trim();
-      const score = parseFloat(m[2]);
-      const max = m[3] ? parseInt(m[3]) : (score <= 10 ? 10 : 100);
-      if (pub.length > 2 && !isNaN(score) && score > 0 && score <= max) {
-        individualScores.push({ publication: pub, score, max });
+    while ((m = itemRegex.exec(revHtml)) !== null) {
+      const score = parseFloat(m[1]);
+      const pub = m[2].trim();
+      if (!isNaN(score) && score > 0 && pub.length > 1) {
+        individualScores.push({
+          publication: pub,
+          score,
+          max: 10,
+          quote: m[3].replace(/<[^>]+>/g, "").replace(/&#39;/g, "'").replace(/&amp;/g, "&").trim().slice(0, 220),
+          url: m[4].startsWith("http") ? m[4] : `https:${m[4]}`,
+        });
       }
     }
     if (individualScores.length > 8) individualScores.length = 8; // 最多8个
 
+    // 专辑信息：艺人 / 专辑名 / 厂牌 / 发行日期
+    const artist = revHtml.match(/<h2>\s*([^<]+)<\/h2>\s*<h3>/i)?.[1]?.trim() || null;
+    const albumTitle = revHtml.match(/<h3>\s*([\s\S]*?)\s*<\/h3>/i)?.[1]?.replace(/<[^>]+>/g, "").trim() || null;
+    const label = revHtml.match(/<dt>\s*Label\s*<\/dt>\s*<dd>([\s\S]*?)<\/dd>/i)?.[1]?.replace(/<[^>]+>/g, "").trim() || null;
+    const releaseDate = revHtml.match(/<dt>\s*UK Release date\s*<\/dt>\s*<dd>([\s\S]*?)<\/dd>/i)?.[1]?.replace(/<[^>]+>/g, "").trim() || null;
+
     return {
       reviewId,
-      title: titleGuess,
+      title: albumTitle,
+      artist,
       overall: overall != null ? Math.round(overall * 10) / 10 : null,
       overallDisplay: overall != null ? `${overall}/10` : null,
       individualScores,
+      label,
+      releaseDate,
       url: reviewUrl,
       source: "AnyDecentMusic",
     };

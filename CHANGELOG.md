@@ -1,5 +1,21 @@
 # Changelog
 
+## [3.13.0] - 2026-08-07
+
+### Fixed
+- “Failed to fetch”根因：本地 Node 服务进程退出后所有接口都会报此错误。
+  已重启服务；SongBPM 验证、评分、卡片渲染恢复正常，前端错误提示补充
+  “请确认本地服务已启动”。
+- SongBPM 验证更稳：直连失败自动走代理重试；接口始终返回结构化错误。
+- AnyDecentMusic 修复：原代码用 `/review/{id}.aspx`（缺 slug）访问必然 404，
+  现改用搜索结果的完整 URL；搜索改为用专辑名（Discogs/Last.fm 解析结果），
+  按查询词匹配度选最相关结果；正确解析 ADM 总分、媒体个体评分
+  （The Guardian 8、NME 8 等）、厂牌与发行日期。
+
+### Added
+- SongBPM 输入框旁增加官网跳转链接（https://songbpm.com/）。
+
+## [3.12.0] - 2026-08-07
 ## [3.12.0] - 2026-08-07
 
 ### Removed

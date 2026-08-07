@@ -277,7 +277,7 @@ details.manual .tip{font:11px/1.7 var(--f-sans);color:var(--ink-3);margin:10px 0
             </div>
           </div>
           <div class="row" style="margin-top:8px">
-            <div class="field" style="flex:3"><label>SongBPM URL（手动粘贴，用于纠正 BPM/Key）</label><input type="text" id="v-songbpm-url" placeholder="https://songbpm.com/@artist/title-xxxx" oninput="saveDraft()"></div>
+            <div class="field" style="flex:3"><label>SongBPM URL（手动粘贴，用于纠正 BPM/Key）<a href="https://songbpm.com/" target="_blank" style="margin-left:6px;color:var(--gold)">官网 ↗</a></label><input type="text" id="v-songbpm-url" placeholder="https://songbpm.com/@artist/title-xxxx" oninput="saveDraft()"></div>
             <div class="field" style="flex:1"><button class="btn ghost" onclick="verifySongBPMUrl()">验证并交叉</button></div>
           </div>
         </div>
@@ -974,10 +974,11 @@ async function verifySongBPMUrl() {
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({ url }),
     });
-    const data = await res.json();
-    if (!data.success || (!data.bpm && !data.key)) {
+    let data = null;
+    try { data = await res.json(); } catch (_) { data = null; }
+    if (!res.ok || !data || !data.success || (!data.bpm && !data.key)) {
       setStatus("analyze-status", "✕ SongBPM 解析失败", "err");
-      toast("SongBPM 解析失败：" + (data.error || "无数据"), "err");
+      toast("SongBPM 解析失败：" + ((data && data.error) || "无数据"), "err");
       return;
     }
     const externalSources = [{ source: "songbpm", bpm: data.bpm, key: data.key }];
@@ -1010,8 +1011,8 @@ async function verifySongBPMUrl() {
     setStatus("analyze-status", "✓ SongBPM 验证完成", "ok");
     toast("SongBPM: " + (data.bpm ? data.bpm + " BPM " : "") + (data.key || ""), "ok");
   } catch (e) {
-    setStatus("analyze-status", "✕ " + e.message, "err");
-    toast("验证失败：" + e.message, "err");
+    setStatus("analyze-status", "✕ " + (e.message || "网络请求失败"), "err");
+    toast("验证失败：" + (e.message || "请确认本地服务已启动"), "err");
   }
 }
 
