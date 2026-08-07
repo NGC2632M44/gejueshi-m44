@@ -1228,11 +1228,6 @@ async function runResearch() {
       }
       if (neSong && neSong.albumCommentCount != null) window._heatData.netease_song_album_comments = neSong.albumCommentCount;
       if (neSong && neSong.albumSubCount != null) window._heatData.netease_song_album_collections = neSong.albumSubCount;
-      if (neSong && neSong.playCount != null) {
-        window._heatData.netease_playcount = neSong.playCount;
-        strip.innerHTML += badge("网易云热度", neSong.playCount, "/100");
-      }
-
       // Last.fm 单曲听众 / 播放量（已验证 Key）
       if (cn.lastfmTrack && cn.lastfmTrack.listeners != null) {
         window._heatData.lastfm_listeners = cn.lastfmTrack.listeners;

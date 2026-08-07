@@ -723,29 +723,24 @@ export function calcHeatScore(heat) {
   const songComments = Math.max(neSongComments, qqComments); // QQ/网易云取更高平台
   const albumComments = neAlbumComments;
   const albumCollect = pick("netease_album_collections");
-  const nePlaycount = pick("netease_playcount");
 
   const domSources = [];
   if (neSongComments) domSources.push(`网易云单曲评论 ${formatNumber(neSongComments)}`);
   if (qqComments) domSources.push(`QQ评论 ${formatNumber(qqComments)}`);
   if (albumComments) domSources.push(`网易云专辑评论 ${formatNumber(albumComments)}`);
   if (albumCollect) domSources.push(`网易云专辑收藏 ${formatNumber(albumCollect)}`);
-  if (nePlaycount) domSources.push(`网易云热度 ${nePlaycount}/100`);
 
-  const playStars = nePlaycount >= 95 ? 5 : nePlaycount >= 85 ? 3 : nePlaycount >= 70 ? 2 : nePlaycount >= 55 ? 1 : 0;
   const domSignals = [];
   if (songComments) domSignals.push({ label: (qqComments > neSongComments ? "QQ单曲评论" : "NC单曲评论"), stars: tierOf(songComments, SONG_COMMENT_TIERS), value: songComments });
   if (albumComments) domSignals.push({ label: "NC专辑评论", stars: tierOf(albumComments, ALBUM_COMMENT_TIERS), value: albumComments });
   if (albumCollect) domSignals.push({ label: "NC专辑收藏", stars: tierOf(albumCollect, ALBUM_COLLECT_TIERS), value: albumCollect });
-  if (nePlaycount) domSignals.push({ label: "NC热度", stars: playStars, value: nePlaycount });
   const top2 = domSignals.sort((a, b) => b.stars - a.stars || b.value - a.value).slice(0, 2);
   const domDetail = top2.map((x) => `${x.label} ${x.value.toLocaleString()}`).join("；") || "No domestic heat data";
 
   const domStars = Math.max(
     tierOf(songComments, SONG_COMMENT_TIERS),
     tierOf(albumComments, ALBUM_COMMENT_TIERS),
-    tierOf(albumCollect, ALBUM_COLLECT_TIERS),
-    playStars
+    tierOf(albumCollect, ALBUM_COLLECT_TIERS)
   );
   const domLabel = ["", "★☆☆☆☆", "★★☆☆☆", "★★★☆☆", "★★★★☆", "★★★★★"][domStars] || "☆☆☆☆☆";
 
@@ -799,7 +794,7 @@ export function calcHeatScore(heat) {
       stars: 0, label: "无数据", sources: [],
       domestic: { stars: 0, label: "☆☆☆☆☆", sources: [], detail: domDetail },
       international: { stars: 0, label: "○○○○○", sources: [], detail: intlDetail },
-      legend: "国内★: 单曲评论100/600/999/5千/2万；专辑评论10/99/999/1800/3800；专辑收藏500/1千/9800/1.8万/4.8万；热度分55/70/85/95。评论/收藏取更高者，QQ与网易云取更高平台。国外●: 听众1万/5万/8万/30万/100万；播放10万/30万/100万/1000万/1亿；Discogs 200/1千/3千/1.5万/5万（want/have≥0.6 +1）；RYM 100/500/1500/5千/2万；Genius 1万/5万/20万/100万/500万。",
+      legend: "国内★: 单曲评论100/600/999/5千/2万；专辑评论10/99/999/1800/3800；专辑收藏500/1千/9800/1.8万/4.8万。评论/收藏取更高者，QQ与网易云取更高平台。国外●: 听众1万/5万/8万/30万/100万；播放10万/30万/100万/1000万/1亿；Discogs 200/1千/3千/1.5万/5万（want/have≥0.6 +1）；RYM 100/500/1500/5千/2万；Genius 1万/5万/20万/100万/500万。",
     };
   }
 
@@ -811,7 +806,7 @@ export function calcHeatScore(heat) {
     sources: [...domSources, ...intlSources],
     domestic: { stars: domStars, label: domLabel, sources: domSources, detail: domDetail },
     international: { stars: intlStars, label: intlLabel, sources: intlSources, detail: intlDetail },
-    legend: "国内★: 单曲评论100/600/999/5千/2万；专辑评论10/99/999/1800/3800；专辑收藏500/1千/9800/1.8万/4.8万；热度分55/70/85/95。评论/收藏取更高者，QQ与网易云取更高平台。国外●: 听众1万/5万/8万/30万/100万；播放10万/30万/100万/1000万/1亿；Discogs 200/1千/3千/1.5万/5万（want/have≥0.6 +1）；RYM 100/500/1500/5千/2万；Genius 1万/5万/20万/100万/500万。",
+    legend: "国内★: 单曲评论100/600/999/5千/2万；专辑评论10/99/999/1800/3800；专辑收藏500/1千/9800/1.8万/4.8万。评论/收藏取更高者，QQ与网易云取更高平台。国外●: 听众1万/5万/8万/30万/100万；播放10万/30万/100万/1000万/1亿；Discogs 200/1千/3千/1.5万/5万（want/have≥0.6 +1）；RYM 100/500/1500/5千/2万；Genius 1万/5万/20万/100万/500万。",
   };
 }
 
