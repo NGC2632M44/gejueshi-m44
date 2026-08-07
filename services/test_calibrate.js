@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { buildBasicCalibration, cleanYouTubeTitle, durationConsensus } from "./calibrate.js";
-import { formatChordSequence } from "./audio-analyzer.js";
+import { formatChordSequence, formatChordSequenceRoman } from "./audio-analyzer.js";
 
 
 test("cleanYouTubeTitle removes artist prefix and qualifier suffix", () => {
@@ -52,4 +52,11 @@ test("formatChordSequence compacts full chord names", () => {
   assert.equal(formatChordSequence("C major / G major / Am"), "C-G-Am");
   assert.equal(formatChordSequence("C# minor, Bb major"), "C#m-Bb");
   assert.equal(formatChordSequence(null), null);
+});
+
+
+test("formatChordSequenceRoman maps transposed progressions to the same numerals", () => {
+  assert.equal(formatChordSequenceRoman("C-G-Am-F", "C major"), "Ⅰ-Ⅴ-Ⅵ-Ⅳ");
+  assert.equal(formatChordSequenceRoman("G-D-Em-C", "G major"), "Ⅰ-Ⅴ-Ⅵ-Ⅳ");
+  assert.equal(formatChordSequenceRoman("Am-Dm-Em", "A minor"), "Ⅰ-Ⅳ-Ⅴ");
 });

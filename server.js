@@ -52,6 +52,7 @@ app.get("/api/research", async (req, res) => {
   const data = await researchAlbum(q, {
     lastfmKey: req.headers["x-lastfm-key"] || keys.lastfmApiKey,
     discogsToken: req.headers["x-discogs-token"] || keys.discogsToken,
+    songTitle: (req.query.song || "").trim() || undefined,
   });
   console.log(`✅ 研究完成 (${Date.now() - start}ms)`);
   res.json(data);

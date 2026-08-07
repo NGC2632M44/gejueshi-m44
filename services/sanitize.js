@@ -8,6 +8,7 @@ export function sanitizeOneLiner(value) {
     "听者笔记", "听感记录", "用户提到", "用户指出", "用户认为", "用户笔记指出",
     "根据用户", "从用户", "用户没有提供", "用户未提供",
     "乐评里提到", "乐评提到", "媒体评价", "平台评分显示", "评论区提到", "网友评价",
+    "808", "909", "TR-808", "TR-909",
     "具体歌词文本需以实际发行版本为准", "以实际歌词为准", "以实际版本为准",
     "并非", "已修正为", "已修正", "已删除", "原文为", "以匹配原词", "引用不完整",
   ];
@@ -18,11 +19,18 @@ export function sanitizeOneLiner(value) {
   const LIMIT = isCJK ? 20 : 60;
   if (text.length > LIMIT) {
     const slice = text.slice(0, LIMIT);
-    const lastPunct = Math.max(slice.lastIndexOf("。"), slice.lastIndexOf("，"), slice.lastIndexOf("；"));
-    text = lastPunct > LIMIT * 0.6 ? slice.slice(0, lastPunct + 1) : slice;
+    if (!isCJK) {
+      // 英文按词边界截断，不切断单词；截断加省略号，不追加中文句号
+      const lastSpace = slice.lastIndexOf(" ");
+      text = (lastSpace > LIMIT * 0.5 ? slice.slice(0, lastSpace) : slice).trim();
+      if (text.length < String(value).trim().length) text += "…";
+    } else {
+      const lastPunct = Math.max(slice.lastIndexOf("。"), slice.lastIndexOf("，"), slice.lastIndexOf("；"));
+      text = lastPunct > LIMIT * 0.6 ? slice.slice(0, lastPunct + 1) : slice;
+    }
   }
   text = text.replace(/[，、]$/, "");
-  if (text.length > LIMIT && !/[。！？」]$/.test(text)) {
+  if (isCJK && text.length > LIMIT && !/[。！？」]$/.test(text)) {
     text += "。";
   }
   return text.trim();
@@ -36,6 +44,7 @@ export function sanitizeScores(scores, lyricsText = "") {
     "听者笔记", "听感记录", "用户提到", "用户指出", "用户认为", "用户笔记指出",
     "根据用户", "从用户", "用户没有提供", "用户未提供",
     "乐评里提到", "乐评提到", "媒体评价", "平台评分显示", "评论区提到", "网友评价",
+    "808", "909", "TR-808", "TR-909",
     "具体歌词文本需以实际发行版本为准", "以实际歌词为准", "以实际版本为准",
     "并非", "已修正为", "已修正", "已删除", "原文为", "以匹配原词", "引用不完整",
   ];

@@ -13,7 +13,7 @@
 import { smartFetch, proxiedFetch } from "./proxy-fetch.js";
 //   4. 缓存: 同一查询 1 小时内不重复请求
 
-import { crossReference, assessKeyReliability, formatChordSequence } from "./audio-analyzer.js";
+import { crossReference, assessKeyReliability, formatChordSequence, formatChordSequenceRoman } from "./audio-analyzer.js";
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
 
@@ -131,6 +131,19 @@ async function queryHookTheory(query, songTitle, artistName) {
     console.log(`   ⚠️ Hooktheory: ${e.message}`);
     return null;
   }
+}
+
+function topChordProgression(localResult) {
+  const events = localResult?.evidence?.["作曲"]?.chord_events;
+  if (!Array.isArray(events) || !events.length) return null;
+  const w = new Map();
+  for (const e of events) {
+    if (!e || !e.label) continue;
+    const dur = ((e.end_sec || 0) - (e.start_sec || 0)) || 0;
+    w.set(e.label, (w.get(e.label) || 0) + dur);
+  }
+  const top = [...w.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k]) => k);
+  return top.length ? top.join("-") : null;
 }
 
 /**
@@ -318,11 +331,26 @@ export async function mirCrossReference(query, localResult, opts = {}) {
 
   // ── 最终推荐值 ──
   const chordSource = external.find(s => s.chord_sequence);
+  const netChordLetters = formatChordSequence(chordSource?.chord_sequence || null);
+  const localChordLetters = topChordProgression(localResult);
+  let chordDisplay = netChordLetters || localChordLetters || null;
+  let chordRomanMode = false;
+  let chordKeyNote = null;
+  const netKey = crossRef.key_consensus || localResult?.key || null;
+  if (netChordLetters && localChordLetters && netKey && localResult?.key) {
+    const romanNet = formatChordSequenceRoman(netChordLetters, netKey);
+    const romanLocal = formatChordSequenceRoman(localChordLetters, localResult.key);
+    if (romanNet && romanLocal && romanNet === romanLocal) {
+      chordDisplay = romanNet;
+      chordRomanMode = true;
+      chordKeyNote = `罗马数字（${netKey}，本地 ${localResult.key} 同构）`;
+    }
+  }
   const recommended = {
     bpm: crossRef.bpm_consensus || localResult?.bpm || null,
     key: crossRef.key_consensus || localResult?.key || null,
     meter: external.find(s => s.meter)?.meter || localResult?.meter || null,
-    chord_sequence: formatChordSequence(chordSource?.chord_sequence || localResult?.chord_sequence || null),
+    chord_sequence: chordDisplay,
     chord_summary: external.find(s => s.chord_summary)?.chord_summary || null,
     bpm_confidence: crossRef.confidence_level === "high" ? 0.85 :
                     crossRef.confidence_level === "medium" ? 0.55 : 0.35,
@@ -335,7 +363,10 @@ export async function mirCrossReference(query, localResult, opts = {}) {
     source: chordSource.source,
     url: chordSource.url || null,
     raw: chordSource.chord_summary || null,
-    formatted: formatChordSequence(chordSource.chord_sequence),
+    formatted: chordDisplay,
+    roman: chordRomanMode,
+    keyNote: chordKeyNote,
+    localProgression: localChordLetters,
   } : null;
 
   const result = {

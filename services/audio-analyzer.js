@@ -377,9 +377,25 @@ export function buildScoringPrompt(audioFeatures, listeningAnswers = "", albumMe
           const pct = p.max ? Math.round(p.score / p.max * 100) : p.score;
           return `- **RYM (RateYourMusic)**: ${p.score}/${p.max || 5} (${pct}%) — 硬核乐迷社区评分，偏保守/严苛${scopeTag}`;
         }
+        case "rym_album": {
+          const pct = p.max ? Math.round(p.score / p.max * 100) : p.score;
+          return `- **RYM 专辑 (RateYourMusic)**: ${p.score}/${p.max || 5} (${pct}%) — 硬核乐迷社区评分（专辑级）`;
+        }
+        case "rym_song": {
+          const pct = p.max ? Math.round(p.score / p.max * 100) : p.score;
+          return `- **RYM 单曲 (RateYourMusic)**: ${p.score}/${p.max || 5} (${pct}%) — 硬核乐迷社区评分（单曲级）`;
+        }
         case "aoty": {
           const pct = p.max ? Math.round(p.score / p.max * 100) : p.score;
           return `- **AOTY (AlbumOfTheYear)**: ${p.score}/${p.max || 100} (${pct}%) — 聚合专业乐评机构评分${scopeTag}`;
+        }
+        case "aoty_album": {
+          const pct = p.max ? Math.round(p.score / p.max * 100) : p.score;
+          return `- **AOTY 专辑用户**: ${p.score}/${p.max || 100} (${pct}%) — 聚合专业乐评机构评分（专辑级）`;
+        }
+        case "aoty_song": {
+          const pct = p.max ? Math.round(p.score / p.max * 100) : p.score;
+          return `- **AOTY 单曲用户**: ${p.score}/${p.max || 100} (${pct}%) — 单曲级用户评分`;
         }
         case "pitchfork":
           return `- **Pitchfork**: ${p.score}/${p.max || 10} — 最具影响力的独立乐评机构${scopeTag}`;
@@ -561,6 +577,7 @@ export function buildScoringPrompt(audioFeatures, listeningAnswers = "", albumMe
   prompts.push('- 分享你的真实感受，不是做技术报告。用「听起来」「感觉像」「让人想起」这类日常表达');
   prompts.push("- 基于歌词文本谈词作，基于BPM谈节奏感，基于频谱数据谈音色冷暖——这些是你真实拥有的信息");
   prompts.push("- 不要假装你听到了具体的乐器变化或演唱技巧——你没听到");
+  prompts.push("- 禁止写具体鼓机/合成器型号（808/909 等）——音频算法无法可靠判断音源型号");
   prompts.push("- 用户笔记中提到的点，要在对应维度体现。用户否定的点，不要出现");
   prompts.push("- 每个维度写 150-220 字，真诚比专业重要，但必须句子连贯、不重复");
   prompts.push("- 禁止写\"乐评里提到\"\"平台评分显示\"\"媒体评价\"\"评论区提到\"这类元描述——直接写内容本身");
@@ -672,70 +689,111 @@ export function calcHeatScore(heat) {
   const isNum = (v) => typeof v === "number" && Number.isFinite(v);
   const pick = (...keys) => keys.map((k) => heat[k]).find((v) => isNum(v) && v > 0) || 0;
 
-  // ── 热度阈值（透明标准，社区经验 + 平台惯例）──
-  // 国内：网易云 999+ 评论是公认“热单入门”门槛；50万播放/5万收藏为高热；
-  //       周杰伦《晴天》是首个百万评论爆款（10万+ 评论为现象级）。
-  // 国外：YouTube 音乐视频 100万播放=热门、1亿=大热；Last.fm 1万听众起步、
-  //       100万=热门曲；Discogs 拥有+想要 200=有收藏需求、5万=经典大发行；
-  //       RYM 1000人评=知名专辑、5万人评=历史级；Genius 页面浏览类比听众。
   const tierOf = (v, tiers) => {
     if (!isNum(v) || v <= 0) return 0;
     let s = 0;
     for (const t of tiers) if (v >= t.min) s = t.stars;
     return s;
   };
-  const COMMENT_TIERS = [
-    { min: 100, stars: 1 }, { min: 300, stars: 2 }, { min: 999, stars: 3 },
-    { min: 5000, stars: 4 }, { min: 50000, stars: 5 },
+  const SONG_COMMENT_TIERS = [
+    { min: 100, stars: 1 }, { min: 600, stars: 2 }, { min: 999, stars: 3 },
+    { min: 5000, stars: 4 }, { min: 20000, stars: 5 },
   ];
-  const COLLECT_TIERS = [
-    { min: 1000, stars: 1 }, { min: 5000, stars: 2 }, { min: 10000, stars: 3 },
+  const SONG_COLLECT_TIERS = [
+    { min: 998, stars: 1 }, { min: 2000, stars: 2 }, { min: 10000, stars: 3 },
     { min: 50000, stars: 4 }, { min: 200000, stars: 5 },
   ];
+  const ALBUM_COMMENT_TIERS = [
+    { min: 10, stars: 1 }, { min: 99, stars: 2 }, { min: 999, stars: 3 },
+    { min: 1800, stars: 4 }, { min: 3800, stars: 5 },
+  ];
+  const ALBUM_COLLECT_TIERS = [
+    { min: 500, stars: 1 }, { min: 1000, stars: 2 }, { min: 9800, stars: 3 },
+    { min: 18000, stars: 4 }, { min: 48000, stars: 5 },
+  ];
+  const BAIDU_TIERS = [
+    { min: 100, stars: 1 }, { min: 1000, stars: 2 }, { min: 5000, stars: 3 },
+    { min: 20000, stars: 4 }, { min: 100000, stars: 5 },
+  ];
 
-  // ── 国内热度（★）：网易云 + QQ ──
+  // ── 国内热度（★）：单曲/专辑分开，评论/收藏取更高者，QQ/网易云取更高平台 ──
   const neAlbumComments = pick("netease_album_comments", "netease_comments");
   const neSongComments = pick("netease_song_comments");
-  const neComments = neAlbumComments + neSongComments + pick("netease_song_album_comments");
-  const neCollections = pick("netease_album_collections") + pick("netease_song_album_collections");
-  const nePlaycount = pick("netease_playcount");
   const qqComments = pick("qq_music_comments");
+  const songComments = Math.max(neSongComments, qqComments); // QQ/网易云取更高平台
+  const songCollect = pick("netease_song_album_collections");
+  const albumComments = neAlbumComments;
+  const albumCollect = pick("netease_album_collections");
+  const nePlaycount = pick("netease_playcount");
+  const baiduIndex = pick("baidu_index");
 
   const domSources = [];
-  if (neComments) domSources.push(`网易云评论 ${formatNumber(neComments)}`);
-  if (neCollections) domSources.push(`网易云收藏 ${formatNumber(neCollections)}`);
-  if (nePlaycount) domSources.push(`网易云热度 ${nePlaycount}/100`);
+  if (neSongComments) domSources.push(`网易云单曲评论 ${formatNumber(neSongComments)}`);
   if (qqComments) domSources.push(`QQ评论 ${formatNumber(qqComments)}`);
+  if (albumComments) domSources.push(`网易云专辑评论 ${formatNumber(albumComments)}`);
+  if (songCollect) domSources.push(`单曲所属专辑收藏 ${formatNumber(songCollect)}`);
+  if (albumCollect) domSources.push(`网易云专辑收藏 ${formatNumber(albumCollect)}`);
+  if (nePlaycount) domSources.push(`网易云热度 ${nePlaycount}/100`);
+  if (baiduIndex) domSources.push(`百度指数 ${formatNumber(baiduIndex)}`);
 
   const domStars = Math.max(
-    tierOf(neComments, COMMENT_TIERS),
-    tierOf(neCollections, COLLECT_TIERS), // 收藏是有效信号但不等价于评论
+    tierOf(songComments, SONG_COMMENT_TIERS),
+    tierOf(songCollect, SONG_COLLECT_TIERS),
+    tierOf(albumComments, ALBUM_COMMENT_TIERS),
+    tierOf(albumCollect, ALBUM_COLLECT_TIERS),
     nePlaycount >= 95 ? 5 : nePlaycount >= 85 ? 3 : nePlaycount >= 70 ? 2 : nePlaycount >= 55 ? 1 : 0,
-    tierOf(qqComments, COMMENT_TIERS)
+    tierOf(baiduIndex, BAIDU_TIERS)
   );
   const domLabel = ["", "★☆☆☆☆", "★★☆☆☆", "★★★☆☆", "★★★★☆", "★★★★★"][domStars] || "☆☆☆☆☆";
   const domDetail = domSources.join("；") || "无国内热度数据";
 
-  // ── 国外热度（●）：Last.fm / YouTube / Discogs / RYM / Genius ──
+  // ── 国外热度（●）：Last.fm / YouTube / Discogs / RYM / Genius / Google Trends / Chartmetric ──
   const listeners = pick("lastfm_listeners");
   const youtube = pick("youtube_views");
-  const discogs = pick("discogs_have") + pick("discogs_want");
+  const discogsHave = pick("discogs_have");
+  const discogsWant = pick("discogs_want");
+  const discogs = discogsHave + discogsWant;
   const rymCount = pick("rym_rating_count");
   const geniusViews = pick("genius_pageviews");
+  const googleTrends = pick("google_trends");
+  const chartmetric = pick("chartmetric_score");
 
   const intlSources = [];
   if (listeners) intlSources.push(`Last.fm ${formatNumber(listeners)}听众`);
   if (youtube) intlSources.push(`YouTube ${formatNumber(youtube)}`);
-  if (discogs) intlSources.push(`Discogs ${formatNumber(discogs)}`);
+  if (discogs) intlSources.push(`Discogs ${formatNumber(discogs)}${discogsHave && discogsWant ? `（want/have=${(discogsWant / discogsHave).toFixed(2)}）` : ""}`);
   if (rymCount) intlSources.push(`RYM ${formatNumber(rymCount)}人`);
   if (geniusViews) intlSources.push(`Genius ${formatNumber(geniusViews)}`);
+  if (googleTrends) intlSources.push(`Google Trends ${googleTrends}/100`);
+  if (chartmetric) intlSources.push(`Chartmetric ${chartmetric}/100`);
+
+  let discogsStars = tierOf(discogs, [
+    { min: 200, stars: 1 }, { min: 1000, stars: 2 }, { min: 3000, stars: 3 },
+    { min: 15000, stars: 4 }, { min: 50000, stars: 5 },
+  ]);
+  // Discogs Demand Index：want/have ≥ 0.6 表示供不应求，热度 +1（封顶 5）
+  if (discogsHave > 0 && discogsWant / discogsHave >= 0.6) discogsStars = Math.min(5, discogsStars + 1);
 
   const intlStars = Math.max(
-    listeners >= 5000000 ? 5 : listeners >= 1000000 ? 4 : listeners >= 200000 ? 3 : listeners >= 50000 ? 2 : listeners >= 10000 ? 1 : 0,
-    youtube >= 50000000 ? 5 : youtube >= 10000000 ? 4 : youtube >= 2000000 ? 3 : youtube >= 500000 ? 2 : youtube >= 100000 ? 1 : 0,
-    discogs >= 100000 ? 5 : discogs >= 20000 ? 4 : discogs >= 5000 ? 3 : discogs >= 1000 ? 2 : discogs >= 200 ? 1 : 0,
-    rymCount >= 50000 ? 5 : rymCount >= 10000 ? 4 : rymCount >= 2000 ? 3 : rymCount >= 500 ? 2 : rymCount >= 100 ? 1 : 0,
-    geniusViews >= 5000000 ? 5 : geniusViews >= 1000000 ? 4 : geniusViews >= 200000 ? 3 : geniusViews >= 50000 ? 2 : geniusViews >= 10000 ? 1 : 0
+    tierOf(listeners, [
+      { min: 10000, stars: 1 }, { min: 50000, stars: 2 }, { min: 80000, stars: 3 },
+      { min: 300000, stars: 4 }, { min: 1000000, stars: 5 },
+    ]),
+    tierOf(youtube, [
+      { min: 100000, stars: 1 }, { min: 300000, stars: 2 }, { min: 1000000, stars: 3 },
+      { min: 10000000, stars: 4 }, { min: 100000000, stars: 5 },
+    ]),
+    discogsStars,
+    tierOf(rymCount, [
+      { min: 100, stars: 1 }, { min: 500, stars: 2 }, { min: 1500, stars: 3 },
+      { min: 5000, stars: 4 }, { min: 20000, stars: 5 },
+    ]),
+    tierOf(geniusViews, [
+      { min: 10000, stars: 1 }, { min: 50000, stars: 2 }, { min: 200000, stars: 3 },
+      { min: 1000000, stars: 4 }, { min: 5000000, stars: 5 },
+    ]),
+    googleTrends >= 90 ? 5 : googleTrends >= 70 ? 4 : googleTrends >= 55 ? 3 : googleTrends >= 40 ? 2 : googleTrends >= 25 ? 1 : 0,
+    chartmetric >= 90 ? 5 : chartmetric >= 80 ? 4 : chartmetric >= 70 ? 3 : chartmetric >= 55 ? 2 : chartmetric >= 40 ? 1 : 0
   );
   const intlLabel = ["", "●○○○○", "●●○○○", "●●●○○", "●●●●○", "●●●●●"][intlStars] || "○○○○○";
   const intlDetail = intlSources.join("；") || "无国外热度数据";
@@ -745,7 +803,7 @@ export function calcHeatScore(heat) {
       stars: 0, label: "无数据", sources: [],
       domestic: { stars: 0, label: "☆☆☆☆☆", sources: [], detail: domDetail },
       international: { stars: 0, label: "○○○○○", sources: [], detail: intlDetail },
-      legend: "国内★: 评论100/300/999/5千/5万；收藏1千/5千/1万/5万/20万；热度分55/70/85/95。国外●: 听众1万/5万/20万/100万/500万；播放10万/50万/200万/1000万/5000万；Discogs 200/1千/5千/2万/10万；RYM 100/500/2千/1万/5万；Genius 1万/5万/20万/100万/500万。",
+      legend: "国内★: 单曲评论100/600/999/5千/2万；单曲收藏998/2千/1万/5万；专辑评论10/99/999/1800/3800；专辑收藏500/1千/9800/1.8万/4.8万；热度分55/70/85/95；百度指数100/1千/5千/2万/10万。评论/收藏取更高者，QQ与网易云取更高平台。国外●: 听众1万/5万/8万/30万/100万；播放10万/30万/100万/1000万/1亿；Discogs 200/1千/3千/1.5万/5万（want/have≥0.6 +1）；RYM 100/500/1500/5千/2万；Genius 1万/5万/20万/100万/500万；Google Trends 25/40/55/70/90；Chartmetric 40/55/70/80/90。",
     };
   }
 
@@ -757,7 +815,7 @@ export function calcHeatScore(heat) {
     sources: [...domSources, ...intlSources],
     domestic: { stars: domStars, label: domLabel, sources: domSources, detail: domDetail },
     international: { stars: intlStars, label: intlLabel, sources: intlSources, detail: intlDetail },
-    legend: "国内★: 评论100/300/999/5千/5万；收藏1千/5千/1万/5万/20万；热度分55/70/85/95。国外●: 听众1万/5万/20万/100万/500万；播放10万/50万/200万/1000万/5000万；Discogs 200/1千/5千/2万/10万；RYM 100/500/2千/1万/5万；Genius 1万/5万/20万/100万/500万。",
+    legend: "国内★: 单曲评论100/600/999/5千/2万；单曲收藏998/2千/1万/5万；专辑评论10/99/999/1800/3800；专辑收藏500/1千/9800/1.8万/4.8万；热度分55/70/85/95；百度指数100/1千/5千/2万/10万。评论/收藏取更高者，QQ与网易云取更高平台。国外●: 听众1万/5万/8万/30万/100万；播放10万/30万/100万/1000万/1亿；Discogs 200/1千/3千/1.5万/5万（want/have≥0.6 +1）；RYM 100/500/1500/5千/2万；Genius 1万/5万/20万/100万/500万；Google Trends 25/40/55/70/90；Chartmetric 40/55/70/80/90。",
   };
 }
 
@@ -796,6 +854,37 @@ export function formatChordSequence(seq) {
       .replace(/\s+/g, ""))
     .filter(Boolean);
   return parts.length ? parts.join("-") : null;
+}
+
+const CHORD_PITCH = { C: 0, "C#": 1, Db: 1, D: 2, "D#": 3, Eb: 3, E: 4, F: 5, "F#": 6, Gb: 6, G: 7, "G#": 8, Ab: 8, A: 9, "A#": 10, Bb: 10, B: 11 };
+const SCALE_DEGREES = { major: [0, 2, 4, 5, 7, 9, 11], minor: [0, 2, 3, 5, 7, 8, 10] };
+const ROMAN = ["Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ"];
+
+function chordRoman(chord, keyName) {
+  const key = normalizeKeyName(keyName);
+  if (!key) return null;
+  const m = String(chord || "").match(/^([A-G][#b]?)(m|min|maj|dim|aug|sus[0-9]?|7|maj7|m7)?$/i);
+  if (!m) return null;
+  let root = m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase();
+  root = KEY_ALIASES[root] || root;
+  const rootPitch = CHORD_PITCH[root];
+  if (rootPitch === undefined) return null;
+  const keyPitch = CHORD_PITCH[key.key];
+  const degrees = SCALE_DEGREES[key.mode];
+  const idx = degrees.indexOf((rootPitch - keyPitch + 12) % 12);
+  if (idx < 0) return null;
+  return ROMAN[idx];
+}
+
+/**
+ * 和弦进行 → 罗马数字（相对给定调性）。用于“本地与网源调式级数相同、
+ * 只是整体移调”的场景，如 C-G-Am-F(C大调) 与 G-D-Em-C(G大调) 同为 Ⅰ-Ⅴ-Ⅵ-Ⅳ。
+ */
+export function formatChordSequenceRoman(seq, keyName) {
+  if (!seq || !keyName) return null;
+  const parts = String(seq).split("-").filter(Boolean);
+  const romans = parts.map((c) => chordRoman(c, keyName));
+  return romans.every(Boolean) ? romans.join("-") : null;
 }
 
 function normalizeKeyName(raw) {

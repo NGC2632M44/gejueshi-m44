@@ -101,7 +101,7 @@ body{
   radial-gradient(700px 480px at 88% 4%, hsla(var(--hue,352),52%,26%,.34), transparent 60%),
   radial-gradient(560px 520px at 6% 96%, hsla(var(--hue,352),55%,16%,.45), transparent 65%)}
 .p-data .inner{position:relative;z-index:2;flex:1;display:flex;flex-direction:column;min-height:0}
-.data-head{display:flex;align-items:center;gap:18px;padding:18px 40px 14px;border-bottom:1px solid rgba(243,238,226,.18)}
+.data-head{display:flex;align-items:center;gap:18px;padding:20px 44px 14px;border-bottom:1px solid rgba(243,238,226,.18)}
 .data-head .thumbbox{width:76px;height:76px;font-size:24px;border-color:rgba(243,238,226,.22)}
 .data-head .who{flex:1;min-width:0}
 .data-head .who .a{font:12px var(--f-mono);letter-spacing:4px;text-transform:uppercase;color:rgba(243,238,226,.72)}
@@ -111,21 +111,28 @@ body{
 .data-head .tot .n{font:900 46px/1 var(--f-serif);color:var(--accent)}
 .data-head .tot .n em{font:12px var(--f-mono);font-style:normal;color:rgba(243,238,226,.6)}
 .data-head .tot .l{font:10px var(--f-mono);letter-spacing:3px;color:rgba(243,238,226,.55)}
-.data-body{flex:1;display:flex;flex-direction:column;padding:12px 40px 6px;min-height:0;overflow:hidden}
-.data-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 18px}
-.data-cell{display:flex;flex-direction:column;border-bottom:1px solid rgba(243,238,226,.12);padding:5px 0 4px}
+.data-body{flex:1;display:flex;flex-direction:column;padding:12px 44px 4px;min-height:0;overflow:hidden}
+.data-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px 18px}
+.data-cell{display:flex;flex-direction:column;border-bottom:1px solid rgba(243,238,226,.12);padding:4px 0 3px}
 .data-cell .k{font:9px var(--f-mono);letter-spacing:2px;color:rgba(243,238,226,.5);text-transform:uppercase}
-.data-cell .v{font:600 17px/1.35 var(--f-serif);color:#f3eee2;margin-top:2px}
+.data-cell .v{font:600 16px/1.3 var(--f-serif);color:#f3eee2;margin-top:2px}
 .data-cell .s{font:9px var(--f-mono);color:rgba(243,238,226,.42);margin-top:1px}
-.data-heat{display:flex;gap:14px;margin-top:8px;flex-wrap:wrap}
-.data-heat .hcard{border:1px solid rgba(243,238,226,.2);border-radius:8px;padding:8px 14px;flex:1;min-width:200px}
+.data-heat{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:8px}
+.data-heat .hcard{display:flex;flex-direction:column;align-items:center;text-align:center;border:1px solid rgba(243,238,226,.2);border-radius:8px;padding:8px 14px}
 .data-heat .hcard .hk{font:9px var(--f-mono);letter-spacing:2px;color:rgba(243,238,226,.55)}
 .data-heat .hcard .hv{font:700 20px var(--f-mono);color:var(--gold);margin-top:4px;letter-spacing:2px}
 .data-heat .hcard .hd{font:10px/1.6 var(--f-mono);color:rgba(243,238,226,.55);margin-top:3px}
-.data-charts{margin-top:8px;font:11px/1.7 var(--f-serif);color:rgba(243,238,226,.72);
-  border-left:2px solid rgba(201,162,77,.5);padding-left:12px;
-  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-.data-foot{display:flex;justify-content:space-between;align-items:center;padding:10px 40px 14px;
+.data-block{margin-top:8px}
+.data-block-title{font:9px var(--f-mono);letter-spacing:3px;color:rgba(201,162,77,.8);margin-bottom:2px}
+.data-sub{font:9px var(--f-mono);letter-spacing:2px;color:rgba(243,238,226,.45);margin:3px 0 1px}
+.drow{display:flex;align-items:baseline;gap:10px;font:10px/1.55 var(--f-serif);color:rgba(243,238,226,.78)}
+.drow .dk{flex:1;min-width:0}
+.drow .dm{flex:1.2;min-width:0;color:rgba(243,238,226,.55)}
+.drow .dv{font:10px var(--f-mono);color:var(--gold);white-space:nowrap}
+.data-credits{margin-top:8px;font:10px/1.6 var(--f-serif);color:rgba(243,238,226,.78);
+  border-left:2px solid rgba(201,162,77,.5);padding-left:12px}
+.data-credits b{font:9px var(--f-mono);letter-spacing:2px;color:rgba(201,162,77,.8)}
+.data-foot{display:flex;justify-content:space-between;align-items:center;padding:10px 44px 14px;
   border-top:1px solid rgba(243,238,226,.16);font:9px var(--f-mono);letter-spacing:2px;color:rgba(243,238,226,.5)}
 /* ========== P2 Radar (Douyin-friendly) ========== */
 .p-radar{height:750px;display:flex;flex-direction:column}
@@ -329,7 +336,16 @@ function calcHeat(heat) {
 function getHeatScore(data) {
   if (data.heatScore && typeof data.heatScore.stars === "number") {
     const h = data.heatScore;
-    return { stars: h.stars, label: "★".repeat(h.stars) + "☆".repeat(5 - h.stars), comments: (data.heat && data.heat.netease_comments) || 0 };
+    const label = h.label || ("★".repeat(h.stars) + "☆".repeat(5 - h.stars));
+    if (h.domestic && h.international) return h;
+    // 兼容旧版 heatScore（无 domestic/international 分拆）
+    return {
+      stars: h.stars,
+      label,
+      comments: (data.heat && data.heat.netease_comments) || 0,
+      domestic: { stars: h.stars, label, sources: h.sources || [], detail: (h.sources || []).join("；") || "无国内热度数据" },
+      international: { stars: 0, label: "○○○○○", sources: [], detail: "无国外热度数据" },
+    };
   }
   return calcHeat(data.heat);
 }
@@ -432,6 +448,10 @@ function heatText(heat){
   if (!parts.length) return "";
   return parts.join(" · ") + "<small>热度 HEAT</small>";
 }
+function oneLinerWrap(text) {
+  if (!text) return "";
+  return /[\u4e00-\u9fff]/.test(text) ? "「" + text + "」" : "\u201C" + text + "\u201D";
+}
 
 function renderCoverPage(data) {
   const heat = getHeatScore(data);
@@ -459,7 +479,7 @@ function renderCoverPage(data) {
             '<span class="of">/ ' + full + '<br>TOTAL SCORE 总分</span></div>' +
           (heat.stars > 0 ? '<div class="c-heat">' + heatText(heat) + '</div>' : "") +
         '</div>' +
-        (data.oneLiner ? '<div class="c-oneliner">「' + escapeHTML(data.oneLiner) + '」</div>' : "") +
+        (data.oneLiner ? '<div class="c-oneliner">' + escapeHTML(oneLinerWrap(data.oneLiner)) + '</div>' : "") +
         (data.mode === "album" && data.hitTracks && data.hitTracks.length ? '<div class="c-tags" style="font-size:13px">' + data.hitTracks.map(t => '<span class="chip">🔥 ' + escapeHTML(t) + '</span>').join("") + '</div>' : (data.tags && data.tags.length ? '<div class="c-tags">' + data.tags.map(t => '<span class="chip">#' + escapeHTML(t) + '</span>').join("") + '</div>' : "")) +
         (data.receptionQuotes && data.receptionQuotes.length ? '<div class="c-summary">' + data.receptionQuotes.map(q => '「' + escapeHTML(q) + '」').join('<br>') + '</div>' : "") +
         '</div>' +
@@ -479,9 +499,29 @@ function renderDataPage(data) {
   ).join("");
   const heatDom = heat.domestic || {};
   const heatIntl = heat.international || {};
+  const chartsHtml = (dp.charts || []).slice(0, 5).map(c =>
+    '<div class="drow"><span class="dk">' + escapeHTML(c.chart) + '</span><span class="dv">#' + escapeHTML(c.peak) + '</span></div>'
+  ).join("");
+  const yearHtml = (dp.yearEnd || []).slice(0, 4).map(y =>
+    '<div class="drow"><span class="dk">' + escapeHTML(y.publication) + '</span><span class="dm">' + escapeHTML(y.list || "") + '</span><span class="dv">' + (y.rank ? '#' + escapeHTML(y.rank) : "—") + '</span></div>'
+  ).join("");
+  const ratings = dp.ratings || { aggregate: [], reviews: [] };
+  const aggHtml = (ratings.aggregate || []).map(r =>
+    '<div class="drow"><span class="dk">' + escapeHTML(r.source) + '</span><span class="dv">' + escapeHTML(r.rating) + '</span></div>'
+  ).join("");
+  const revHtml = (ratings.reviews || []).slice(0, 6).map(r =>
+    '<div class="drow"><span class="dk">' + escapeHTML(r.source) + '</span><span class="dv">' + escapeHTML(r.rating) + '</span></div>'
+  ).join("");
+  const credits = dp.credits;
+  const creditHtml = credits
+    ? '<div class="data-credits"><b>Credits</b> ' +
+      (credits.writers && credits.writers.length ? 'Writer(s): ' + escapeHTML(credits.writers.join(" / ")) : "") +
+      (credits.producers && credits.producers.length ? ' · Producer(s): ' + escapeHTML(credits.producers.join(" / ")) : "") +
+      '</div>'
+    : "";
   return '<section class="page p-data" style="--hue:' + hue + '">' +
     '<div class="glow"></div>' +
-    '<div class="frame-line"></div>' + corners() +
+    corners() +
     '<div class="inner">' +
       '<header class="data-head">' +
         '<div class="thumbbox">' + thumbImg(data) + '</div>' +
@@ -498,7 +538,13 @@ function renderDataPage(data) {
           '<div class="hcard"><div class="hk">国内热度 DOMESTIC</div><div class="hv">' + escapeHTML(heatDom.label || "☆☆☆☆☆") + '</div><div class="hd">' + escapeHTML(heatDom.detail || "无数据") + '</div></div>' +
           '<div class="hcard"><div class="hk">国外热度 OVERSEAS</div><div class="hv">' + escapeHTML(heatIntl.label || "○○○○○") + '</div><div class="hd">' + escapeHTML(heatIntl.detail || "无数据") + '</div></div>' +
         '</div>' +
-        (dp.charts ? '<div class="data-charts"><b>榜单/背景 </b>' + escapeHTML(dp.charts) + '</div>' : "") +
+        (chartsHtml ? '<div class="data-block"><div class="data-block-title">CHARTS</div>' + chartsHtml + '</div>' : "") +
+        (yearHtml ? '<div class="data-block"><div class="data-block-title">YEAR-END LISTS</div>' + yearHtml + '</div>' : "") +
+        ((aggHtml || revHtml) ? '<div class="data-block"><div class="data-block-title">PROFESSIONAL RATINGS</div>' +
+          (aggHtml ? '<div class="data-sub">Aggregate</div>' + aggHtml : "") +
+          (revHtml ? '<div class="data-sub">Reviews</div>' + revHtml : "") +
+          '</div>' : "") +
+        creditHtml +
       '</div>' +
       '<footer class="data-foot"><span>M44 SOUND ANATOMY</span><span>VERIFIED DATA · ' + dateOf(data) + '</span></footer>' +
     '</div>' +

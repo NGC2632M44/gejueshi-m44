@@ -32,8 +32,8 @@ test("calcHeatScore uses album/song comments and collections", () => {
   const h = calcHeatScore({ netease_album_comments: 1200, netease_album_collections: 5000 });
   assert.equal(h.stars, 3); // 评论 1200 未过 999 门槛+1档，收藏不按评论等价
   assert.equal(h.domestic.stars, 3);
-  assert.ok(h.domestic.sources.some((s) => s.includes("网易云评论 1.2K")));
-  assert.ok(h.domestic.sources.some((s) => s.includes("网易云收藏 5.0K")));
+  assert.ok(h.domestic.sources.some((s) => s.includes("网易云专辑评论 1.2K")));
+  assert.ok(h.domestic.sources.some((s) => s.includes("网易云专辑收藏 5.0K")));
 });
 
 
@@ -63,7 +63,7 @@ test("calcHeatScore splits domestic (★) and international (●) heat", () => {
   });
   assert.equal(h.domestic.stars, 3);
   assert.match(h.domestic.label, /★/);
-  assert.equal(h.international.stars, 2);
+  assert.equal(h.international.stars, 3);
   assert.match(h.international.label, /●/);
   assert.ok(h.legend.includes("999"));
 });

@@ -1152,7 +1152,8 @@ def _detect_subbass(audio: np.ndarray, sr: int) -> dict:
         if has_subbass:
             sub_mean_db = 20 * math.log10(max(np.mean(sub_energy[sustained_mask]) if sustained_frames > 0 else 1e-10, 1e-10))
             if sub_mean_db > -22:
-                sub_type = "808"
+                # 音频算法无法可靠区分 808/909/普通合成贝斯，只标注“持续低频”
+                sub_type = "sustained_sub"
             else:
                 sub_type = "synth_bass"
         elif kick_frames > 0 and sustained_frames < kick_frames * 2:
@@ -1302,7 +1303,7 @@ def _analyze_arrangement_texture(audio: np.ndarray, sr: int, spectral: dict, ste
 
     texture_tags = []
     if subbass.get("has_subbass"):
-        label = "subbass" + (" (808)" if subbass.get("subbass_type") == "808" else "")
+        label = "subbass" + (" (持续低频)" if subbass.get("subbass_type") in ("sustained_sub", "synth_bass") else "")
         texture_tags.append({"label": label, "category": "bass",
                              "confidence": 0.6 if subbass.get("is_sustained") else 0.3})
 

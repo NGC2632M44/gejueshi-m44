@@ -1,5 +1,39 @@
 # Changelog
 
+## [3.11.0] - 2026-08-07
+
+### Added
+- RYM / AOTY 手动输入拆成“专辑 / 单曲”两套独立数值（含评分人数），不再用
+  单选“对象”标记，可同时填专辑分与单曲分。
+- 罗马数字和弦：网源（Hooktheory/SongBPM）优先；当本地检测与网源调式级数
+  相同只是整体移调时，显示 Ⅰ-Ⅴ-Ⅵ-Ⅳ（例如 C-G-Am-F 与 G-D-Em-C），并注明
+  “罗马数字（网源调性，本地同构）”。
+- 国内热度按你的标准细分：单曲评论 100/600/999/5千/2万、单曲收藏 998/2千/
+  1万/5万；专辑评论 10/99/999/1800/3800、专辑收藏 500/1千/9800/1.8万/4.8万；
+  单曲/专辑各自取评论/收藏更高者，QQ 与网易云取更高平台。
+- 国外热度优化：Last.fm/YouTube/Discogs/RYM/Genius 阈值下调并新增
+  Google Trends、Chartmetric 手动字段；Discogs want/have≥0.6 热度 +1；
+  新增国内“百度指数”手动字段。
+- 数据页（第 2 页）大改：去掉白框重叠，英文术语（Key/Loudness/LRA/Spectral
+  Centroid 等），来源写具体引擎/API（sonara / librosa / pyloudnorm /
+  NetEase + Last.fm / Hooktheory）；Charts、Year-end Lists、Professional
+  Ratings（聚合+媒体）、Writer(s)/Producer(s) 结构化分行展示。
+- Wikipedia 整页单次抓取并按 h2 拆节（比逐节请求更稳）；自动把艺人页重定向
+  到专辑页再解析。
+
+### Fixed
+- 一句话总评英文不再被从单词中间截断（“keyboa”问题），按词边界截断并加
+  “…”；英文不再追加中文句号；卡片对英文总评改用英文引号。
+- “808 的 subbass”幻觉根除：音频引擎不再把持续低频标成 808（只标
+  sustained_sub），prompt 与净化同时禁用 808/909 字样。
+- 数据页国内/国外热度无数据：兼容旧版 heatScore 结构并强制补算分拆字段；
+  两个热度框改为等宽居中排版。
+
+### Changed
+- Wikipedia 解析把引注 “[26]” 等、sr-only CSS、StarStarStarStar 星级评分
+  统一清洗/转换为 4/5 形式。
+- 版本统一 3.11.0。
+
 ## [3.10.0] - 2026-08-07
 
 ### Fixed

@@ -344,18 +344,19 @@ details.manual .tip{font:11px/1.7 var(--f-sans);color:var(--ink-3);margin:10px 0
           <div class="inner">
             <div class="tip">接口找不到的平台请点 ↗ 手动搜索并填写；留空表示“无此维度数据”，不会当作 0 参与评分。</div>
             <div class="row">
-              <div class="field"><label>RYM 评分 /5</label><input type="text" id="plat-rym" placeholder="3.88"></div>
-              <div class="field"><label>评分人数 <a href="#" onclick="openPlatformSearch('https://rateyourmusic.com/search?searchterm=')">↗</a></label><input type="text" id="plat-rym-count" placeholder="1500"></div>
+              <div class="field"><label>RYM 专辑评分 /5 <a href="#" onclick="openPlatformSearch('https://rateyourmusic.com/search?searchterm=')">↗</a></label><input type="text" id="plat-rym-album" placeholder="3.88"></div>
+              <div class="field"><label>RYM 专辑人数</label><input type="text" id="plat-rym-album-count" placeholder="1500"></div>
+              <div class="field"><label>RYM 单曲评分 /5 <a href="#" onclick="openPlatformSearch('https://rateyourmusic.com/search?searchterm=')">↗</a></label><input type="text" id="plat-rym-song" placeholder="3.5"></div>
+              <div class="field"><label>RYM 单曲人数</label><input type="text" id="plat-rym-song-count" placeholder="300"></div>
+            </div>
+            <div class="row">
               <div class="field"><label>RYM 流派</label><input type="text" id="plat-rym-genres" placeholder="Indie Rock, Garage Rock"></div>
-              <div class="field"><label>RYM 对象</label><select id="plat-rym-scope" onchange="saveDraft()"><option value="song">单曲</option><option value="album">专辑</option></select></div>
+              <div class="field"><label>AOTY 专辑用户 /100 <a href="#" onclick="openPlatformSearch('https://www.albumoftheyear.org/search.php?q=')">↗</a></label><input type="text" id="plat-aoty-album" placeholder="85"></div>
+              <div class="field"><label>AOTY 专辑乐评 /100</label><input type="text" id="plat-aoty-critic" placeholder="76"></div>
+              <div class="field"><label>AOTY 单曲用户 /100 <a href="#" onclick="openPlatformSearch('https://www.albumoftheyear.org/search.php?q=')">↗</a></label><input type="text" id="plat-aoty-song" placeholder="80"></div>
             </div>
             <div class="row">
-              <div class="field"><label>AOTY 用户 /100 <a href="#" onclick="openPlatformSearch('https://www.albumoftheyear.org/search.php?q=')">↗</a></label><input type="text" id="plat-aoty" placeholder="85"></div>
-              <div class="field"><label>AOTY 乐评 /100</label><input type="text" id="plat-aoty-critic" placeholder="76"></div>
               <div class="field"><label>Discogs 评分 /5 <a href="#" onclick="openPlatformSearch('https://www.discogs.com/search/?q=')">↗</a></label><input type="text" id="plat-discogs" placeholder="4.2"></div>
-              <div class="field"><label>AOTY 对象</label><select id="plat-aoty-scope" onchange="saveDraft()"><option value="album">专辑</option><option value="song">单曲</option></select></div>
-            </div>
-            <div class="row">
               <div class="field"><label>Pitchfork /10 <a href="#" onclick="openPlatformSearch('https://pitchfork.com/search/?query=')">↗</a></label><input type="text" id="plat-p4k" placeholder="7.5"></div>
               <div class="field"><label>Metacritic /100 <a href="#" onclick="openPlatformSearch('https://www.metacritic.com/search/all/')">↗</a></label><input type="text" id="plat-mc" placeholder="75"></div>
               <div class="field"><label>NME /10 <a href="#" onclick="openPlatformSearch('https://www.nme.com/search?q=')">↗</a></label><input type="text" id="plat-nme" placeholder="8"></div>
@@ -373,6 +374,11 @@ details.manual .tip{font:11px/1.7 var(--f-sans);color:var(--ink-3);margin:10px 0
               <div class="field"><label>Spotify 热度 /100 <a href="#" onclick="openPlatformSearch('https://open.spotify.com/search/')">↗</a></label><input type="text" id="plat-spotify" placeholder="80"></div>
               <div class="field"><label>Apple Music /100 <a href="#" onclick="openPlatformSearch('https://music.apple.com/us/search?term=')">↗</a></label><input type="text" id="plat-apple" placeholder="—"></div>
               <div class="field"><label>YouTube 播放量 <a href="#" onclick="openPlatformSearch('https://www.youtube.com/results?search_query=')">↗</a></label><input type="text" id="plat-youtube" placeholder="120000"></div>
+            </div>
+            <div class="row">
+              <div class="field"><label>百度指数（国内流量参考）<a href="#" onclick="openPlatformSearch('https://index.baidu.com/v2/main/index.html#/trend/')">↗</a></label><input type="text" id="plat-baidu" placeholder="5000"></div>
+              <div class="field"><label>Google Trends 0-100 <a href="#" onclick="openPlatformSearch('https://trends.google.com/trends/explore?q=')">↗</a></label><input type="text" id="plat-google-trends" placeholder="40"></div>
+              <div class="field"><label>Chartmetric Score 0-100 <a href="#" onclick="openPlatformSearch('https://app.chartmetric.com/search/')">↗</a></label><input type="text" id="plat-chartmetric" placeholder="60"></div>
             </div>
           </div>
         </details>
@@ -500,11 +506,12 @@ const DRAFT_KEY = "m44-draft-v5";
 const DRAFT_FIELDS = [
   "audio-path", "research-query",
   "online-song", "online-artist", "online-album",
-  "plat-rym", "plat-rym-count", "plat-rym-genres", "plat-rym-scope",
-  "plat-aoty", "plat-aoty-critic", "plat-discogs", "plat-aoty-scope",
+  "plat-rym-album", "plat-rym-album-count", "plat-rym-song", "plat-rym-song-count", "plat-rym-genres",
+  "plat-aoty-album", "plat-aoty-critic", "plat-aoty-song", "plat-discogs",
   "plat-p4k", "plat-mc", "plat-nme", "plat-guardian", "plat-clash", "plat-dork",
   "plat-qq", "plat-qq-comments",
   "plat-spotify", "plat-apple", "plat-youtube",
+  "plat-baidu", "plat-google-trends", "plat-chartmetric",
   "note-arrangement", "note-performance", "note-production",
   "note-highlight", "note-similar", "note-lyrics",
   "meta-artist", "meta-title", "meta-year", "meta-label", "meta-genre", "meta-album",
@@ -897,7 +904,8 @@ function showMIRPanel(mirData) {
       chordEl.style.cssText = "margin:6px 0 8px;font:10px var(--f-mono);color:var(--ink-2)";
       const localTop = topChordsFromEvidence(audioFeatures?.evidence);
       const srcName = ce.source === "hooktheory" ? "Hooktheory 页面解析" : (ce.source || "外部源");
-      chordEl.innerHTML = `和弦进行: <b>${escapeHTML(ce.formatted)}</b> — 来源: ${escapeHTML(srcName)}` +
+      const romanNote = ce.roman ? `（${escapeHTML(ce.keyNote || "罗马数字")}）` : "";
+      chordEl.innerHTML = `和弦进行: <b>${escapeHTML(ce.formatted)}</b>${romanNote} — 来源: ${escapeHTML(srcName)}` +
         (ce.url ? `（<a href="${escapeHTML(ce.url)}" target="_blank" style="color:inherit">原页面</a>）` : "") +
         (localTop ? `；本地检测高频和弦: ${escapeHTML(localTop)}` : "");
       panel.insertBefore(chordEl, panel.querySelector(".row"));
@@ -1114,7 +1122,8 @@ async function runResearch() {
   window._heatData = {};
 
   try {
-    const res = await fetch(`${API}/api/research?q=${encodeURIComponent(query)}`);
+    const songParam = [$("online-song").value.trim(), $("online-artist").value.trim()].filter(Boolean).join(" ") || query;
+    const res = await fetch(`${API}/api/research?q=${encodeURIComponent(query)}&song=${encodeURIComponent(songParam)}`);
     researchData = await res.json();
     const agg = researchData.aggregate || {};
     const researchErrors = (researchData.errors || []).filter(Boolean);
@@ -1489,24 +1498,29 @@ function buildDataPage(af, heatScore, researchData, scores) {
     if (value != null && value !== "" && value !== "—" && value !== "?") params.push({ label, value: String(value), source });
   };
   const dur = af && af.duration_seconds;
-  add("BPM", af && af.bpm, (af && (af.bpm_method || "").includes("network")) ? "本地 sonara + 外部交叉" : (af && af.bpm_method) || "本地分析");
-  add("调性", af && af.key, (af && (af.key_method || "").includes("network")) ? "本地算法 + 外部交叉" : (af && af.key_method) || "本地分析");
-  add("时长", dur ? Math.floor(dur / 60) + ":" + String(Math.floor(dur % 60)).padStart(2, "0") : null, (researchData && researchData.calibration && researchData.calibration.durationCheck) ? "Last.fm/网易云共识" : "本地 ffprobe");
-  add("整体响度", d.integrated_lufs != null ? d.integrated_lufs.toFixed(1) + " LUFS" : null, "EBU R128");
-  add("True Peak", d.true_peak_dbtp != null ? d.true_peak_dbtp + " dBTP" : null, "ITU-R BS.1770-4");
-  add("动态范围 LRA", d.lra != null ? d.lra + " LU" : null, "EBU R128");
-  add("Crest", d.crest_factor != null ? d.crest_factor + " dB" : null, "本地分析");
-  add("立体声宽度", st.stereo_width != null ? st.stereo_width + "%" : null, "Mid/Side 分析");
-  add("相位相关", st.phase_correlation_mean != null ? st.phase_correlation_mean : null, "本地分析");
-  add("频谱质心", sp.centroid_mean != null ? Math.round(sp.centroid_mean) + " Hz" : null, "librosa");
-  add("高频衰减", sp.rolloff_mean != null ? Math.round(sp.rolloff_mean) + " Hz" : null, "librosa 95%");
-  add("频谱带宽", sp.bandwidth_mean != null ? Math.round(sp.bandwidth_mean) + " Hz" : null, "librosa");
-  add("和弦进行", (af && af.chord_sequence) || null, "Hooktheory 页面解析");
-  const agg = (researchData && researchData.aggregate) || {};
+  const netBpm = af && (af.bpm_method || "").includes("network");
+  const netKey = af && (af.key_method || "").includes("network");
+  add("BPM", af && af.bpm, netBpm ? "sonara + Hooktheory/SongBPM" : "sonara");
+  add("Key", af && af.key, netKey ? "librosa HPCP + Hooktheory/SongBPM" : "librosa HPCP");
+  add("Duration", dur ? Math.floor(dur / 60) + ":" + String(Math.floor(dur % 60)).padStart(2, "0") : null, (researchData && researchData.calibration && researchData.calibration.durationCheck) ? "NetEase + Last.fm" : "ffprobe");
+  add("Loudness (LUFS)", d.integrated_lufs != null ? d.integrated_lufs.toFixed(1) : null, "pyloudnorm (EBU R128)");
+  add("True Peak", d.true_peak_dbtp != null ? d.true_peak_dbtp + " dBTP" : null, "pyloudnorm (ITU-R BS.1770-4)");
+  add("LRA", d.lra != null ? d.lra + " LU" : null, "pyloudnorm (EBU R128)");
+  add("Crest Factor", d.crest_factor != null ? d.crest_factor + " dB" : null, "pyloudnorm");
+  add("Stereo Width", st.stereo_width != null ? st.stereo_width + "%" : null, "librosa (Mid/Side)");
+  add("Phase Correlation", st.phase_correlation_mean != null ? st.phase_correlation_mean : null, "librosa");
+  add("Spectral Centroid", sp.centroid_mean != null ? Math.round(sp.centroid_mean) + " Hz" : null, "librosa");
+  add("Spectral Rolloff", sp.rolloff_mean != null ? Math.round(sp.rolloff_mean) + " Hz" : null, "librosa");
+  add("Spectral Bandwidth", sp.bandwidth_mean != null ? Math.round(sp.bandwidth_mean) + " Hz" : null, "librosa");
+  add("Chord Progression", (af && af.chord_sequence) || null, "Hooktheory");
+  const wd = (researchData && researchData.wikiData) || {};
   return {
     params,
     heat: heatScore || null,
-    charts: (agg.charts && agg.charts.text) ? agg.charts.text.slice(0, 800) : null,
+    charts: (Array.isArray(wd.charts) && wd.charts.length) ? wd.charts : null,
+    yearEnd: (Array.isArray(wd.yearEnd) && wd.yearEnd.length) ? wd.yearEnd : null,
+    ratings: (wd.ratings && (wd.ratings.aggregate.length || wd.ratings.reviews.length)) ? wd.ratings : null,
+    credits: wd.credits || null,
   };
 }
 
@@ -1528,11 +1542,14 @@ async function runScoring() {
   const listeningNotes = notes.join("\n\n") || "";
 
   const pr = platformRatings || {};
-  const rymVal = parseFloat($("plat-rym").value);
-  const rymCount = parseInt($("plat-rym-count").value) || null;
+  const rymAlbumVal = parseFloat($("plat-rym-album").value);
+  const rymAlbumCount = parseInt($("plat-rym-album-count").value) || null;
+  const rymSongVal = parseFloat($("plat-rym-song").value);
+  const rymSongCount = parseInt($("plat-rym-song-count").value) || null;
   const rymGenres = $("plat-rym-genres").value.trim();
-  const aotyVal = parseFloat($("plat-aoty").value);
+  const aotyAlbumVal = parseFloat($("plat-aoty-album").value);
   const aotyCritic = parseFloat($("plat-aoty-critic").value);
+  const aotySongVal = parseFloat($("plat-aoty-song").value);
   const discogsVal = parseFloat($("plat-discogs").value);
   const p4kVal = parseFloat($("plat-p4k").value);
   const mcVal = parseFloat($("plat-mc").value);
@@ -1546,8 +1563,11 @@ async function runScoring() {
   const appleVal = parseInt($("plat-apple").value) || null;
   const youtubeVal = parseInt($("plat-youtube").value) || null;
 
-  if (rymVal) pr.rym = {score: rymVal, max: 5, rating_count: rymCount, scope: $("plat-rym-scope").value || "song"};
-  if (aotyVal) pr.aoty = {score: aotyVal, max: 100, scope: $("plat-aoty-scope").value || "album"};
+  if (rymAlbumVal) pr.rym_album = {score: rymAlbumVal, max: 5, rating_count: rymAlbumCount, scope: "album"};
+  if (rymSongVal) pr.rym_song = {score: rymSongVal, max: 5, rating_count: rymSongCount, scope: "song"};
+  if (aotyAlbumVal) pr.aoty_album = {score: aotyAlbumVal, max: 100, scope: "album"};
+  if (aotyCritic) pr.aoty_critic = {score: aotyCritic, max: 100};
+  if (aotySongVal) pr.aoty_song = {score: aotySongVal, max: 100, scope: "song"};
   if (aotyCritic) pr.aoty_critic = {score: aotyCritic, max: 100};
   if (discogsVal) pr.discogs = {score: discogsVal, max: 5};
   if (p4kVal) pr.pitchfork = {score: p4kVal, max: 10};
@@ -1562,7 +1582,13 @@ async function runScoring() {
   if (youtubeVal != null) { pr.youtube = {score: youtubeVal}; window._heatData.youtube_views = youtubeVal; }
 
   if (qqComments) window._heatData.qq_music_comments = qqComments;
-  if (rymCount) window._heatData.rym_rating_count = rymCount;
+  if (rymAlbumCount || rymSongCount) window._heatData.rym_rating_count = rymAlbumCount || rymSongCount;
+  const baiduVal = parseInt($("plat-baidu").value) || null;
+  const googleTrendsVal = parseInt($("plat-google-trends").value) || null;
+  const chartmetricVal = parseInt($("plat-chartmetric").value) || null;
+  if (baiduVal) window._heatData.baidu_index = baiduVal;
+  if (googleTrendsVal) window._heatData.google_trends = googleTrendsVal;
+  if (chartmetricVal) window._heatData.chartmetric_score = chartmetricVal;
 
   const metadata = {
     artist: $("meta-artist").value.trim(),

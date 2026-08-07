@@ -53,7 +53,7 @@ function _researchCacheKey(query) {
 
 export async function researchAlbum(query, opts = {}) {
   // 缓存命中
-  const ck = _researchCacheKey(query);
+  const ck = _researchCacheKey(query + "|" + (opts.songTitle || ""));
   const cached = RESEARCH_CACHE.get(ck);
   if (cached && Date.now() - cached.ts < RESEARCH_CACHE_TTL) {
     console.log(`   💾 研究缓存命中: "${query}" (${Math.round((Date.now() - cached.ts) / 1000)}s前)`);
@@ -62,15 +62,23 @@ export async function researchAlbum(query, opts = {}) {
 
   const lfKey = opts.lastfmKey || process.env.LASTFM_API_KEY || null;
   const dgToken = opts.discogsToken || process.env.DISCOGS_TOKEN || null;
-  const r = { query, wikipedia:null, reception:null, personnel:null, charts:null, musicbrainz:null, itunes:null, lastfm:null, discogs:null, rym:null, aoty:null, anyDecentMusic:null, aggregate:null, errors:[], timestamp:new Date().toISOString() };
+  const r = { query, wikipedia:null, reception:null, personnel:null, charts:null, yearEnd:null, trackListing:null, wikiData:null, musicbrainz:null, itunes:null, lastfm:null, discogs:null, rym:null, aoty:null, anyDecentMusic:null, aggregate:null, errors:[], timestamp:new Date().toISOString() };
 
   // 并行任务
   const tasks = [
-    fetchWikipedia(query).then(v=>{r.wikipedia=v;if(v?.title)return Promise.allSettled([
-      fetchWikiSection(v.title,"Critical reception").then(x=>r.reception=x).catch(()=>{}),
-      fetchWikiSection(v.title,"Personnel").then(x=>r.personnel=x).catch(()=>{}),
-      fetchWikiSection(v.title,"Charts").then(x=>r.charts=x).catch(()=>{}),
-    ]);}).catch(e=>r.errors.push(`Wikipedia: ${e.message}`)),
+    fetchWikipedia(query).then(async v=>{
+      r.wikipedia=v;
+      if(v?.title){
+        const secs = await fetchWikiPageSections(v.title);
+        if (secs) {
+          r.reception = secs["critical reception"] || null;
+          r.personnel = secs["personnel"] || null;
+          r.charts = secs["charts"] || null;
+          r.yearEnd = secs["year-end lists"] || null;
+          r.trackListing = secs["track listing"] || null;
+        }
+      }
+    }).catch(e=>r.errors.push(`Wikipedia: ${e.message}`)),
     fetchMusicBrainz(query).then(v=>r.musicbrainz=v).catch(e=>r.errors.push(`MusicBrainz: ${e.message}`)),
     fetchiTunes(query).then(v=>r.itunes=v).catch(e=>r.errors.push(`iTunes: ${e.message}`)),
     // RYM/AOTY 通过搜索引擎获取（不直接爬目标站）
@@ -81,6 +89,24 @@ export async function researchAlbum(query, opts = {}) {
   if (dgToken) tasks.push(fetchDiscogsAPI(query,dgToken).then(v=>r.discogs=v).catch(e=>r.errors.push(`Discogs: ${e.message}`)));
 
   await Promise.allSettled(tasks);
+  // 若 Wikipedia 抓到的是艺人页而非专辑页，用已解析的专辑名（Discogs/Last.fm）重查
+  const resolvedAlbum = r.discogs?.results?.[0]?.title || r.lastfm?.title || null;
+  if (resolvedAlbum && (!r.wikipedia?.title || !new RegExp(resolvedAlbum.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(r.wikipedia.title))) {
+    const wp2 = await fetchWikipedia(resolvedAlbum);
+    if (wp2 && /album|song|single/i.test(wp2.title + " " + (wp2.extract || ""))) {
+      console.log(`   📚 Wikipedia 重定向到专辑页: ${wp2.title}`);
+      r.wikipedia = wp2;
+      const secs = await fetchWikiPageSections(wp2.title);
+      if (secs) {
+        r.reception = secs["critical reception"] || null;
+        r.personnel = secs["personnel"] || null;
+        r.charts = secs["charts"] || null;
+        r.yearEnd = secs["year-end lists"] || null;
+        r.trackListing = secs["track listing"] || null;
+      }
+    }
+  }
+  r.wikiData = buildWikiData(r, opts.songTitle);
   r.aggregate = buildAggregate(r);
   // 写入缓存
   RESEARCH_CACHE.set(ck, { data: { ...r }, ts: Date.now() });
@@ -141,19 +167,203 @@ async function fetchWikipedia(query) {
 }
 
 async function fetchWikiSection(pageTitle, sectionName) {
-  const secRes = await proxyFetch(`https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(pageTitle)}&prop=sections&format=json&origin=*`, {signal:AbortSignal.timeout(T)});
-  const sections = (await secRes.json())?.parse?.sections || [];
-  const section = sections.find(s => new RegExp(sectionName,"i").test(s.line) && !/commercial|legacy|tour|track/i.test(s.line.replace(new RegExp(sectionName,"i"),"")));
-  if (!section) return null;
-  const conRes = await proxyFetch(`https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(pageTitle)}&prop=text&section=${section.index}&format=json&origin=*`, {signal:AbortSignal.timeout(T)});
-  const html = (await conRes.json())?.parse?.text?.["*"] || "";
+  let html = "";
+  for (let attempt = 0; attempt < 2 && !html; attempt++) {
+    try {
+      const secRes = await proxyFetch(`https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(pageTitle)}&prop=sections&format=json&origin=*`, {signal:AbortSignal.timeout(T)});
+      const sections = (await secRes.json())?.parse?.sections || [];
+      const section = sections.find(s => {
+        if (!new RegExp(sectionName, "i").test(s.line)) return false;
+        if (/track/i.test(sectionName)) return true;
+        return !/commercial|legacy|tour|track/i.test(s.line.replace(new RegExp(sectionName, "i"), ""));
+      });
+      if (!section) return null;
+      const conRes = await proxyFetch(`https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(pageTitle)}&prop=text&section=${section.index}&format=json&origin=*`, {signal:AbortSignal.timeout(T)});
+      html = (await conRes.json())?.parse?.text?.["*"] || "";
+    } catch (e) {
+      if (attempt === 1) throw e;
+      await new Promise((r) => setTimeout(r, 600));
+    }
+  }
   if (!html) return null;
 
   // 保留表格结构用于评分解析
   const tableText = parseWikiScoringTable(html);
+  const tables = parseWikiTables(html);
   // 同时也产出纯文本
   const clean = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi,"").replace(/<style[^>]*>[\s\S]*?<\/style>/gi,"").replace(/<[^>]+>/g," ").replace(/&[^;]+;/g," ").replace(/\s+/g," ").trim().substring(0,3000);
-  return { title: section.line, text: clean, tableScores: tableText };
+  return { title: section.line, text: clean, tableScores: tableText, tables, html };
+}
+
+function sectionData(name, html) {
+  if (!html || !String(html).trim()) return null;
+  const tableText = parseWikiScoringTable(html);
+  const tables = parseWikiTables(html);
+  const clean = html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&[^;]+;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .substring(0, 3000);
+  return { title: name, text: clean, tableScores: tableText, tables, html };
+}
+
+/**
+ * 一次抓取整页 HTML，按 h2 标题拆出各 section（比逐 section 请求更稳）。
+ */
+async function fetchWikiPageSections(pageTitle) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await proxyFetch(
+        `https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(pageTitle)}&prop=text&format=json&origin=*`,
+        { signal: AbortSignal.timeout(T) }
+      );
+      const html = (await res.json())?.parse?.text?.["*"] || "";
+      if (!html) return null;
+      const out = {};
+      const parts = html.split(/(<h2[^>]*>)/i);
+      for (let i = 2; i < parts.length; i += 2) {
+        const openTag = parts[i - 1] || "";
+        const idMatch = openTag.match(/id="([^"]+)"/i) || parts[i].match(/<span[^>]*id="([^"]+)"[^>]*>/i);
+        const hEnd = parts[i].indexOf("</h2>");
+        const body = hEnd >= 0 ? parts[i].slice(hEnd + 5) : parts[i];
+        const rawId = idMatch?.[1] || "";
+        const name = rawId.replace(/_/g, " ").toLowerCase().trim();
+        if (name && body.trim()) out[name] = sectionData(name, body);
+      }
+      return out;
+    } catch (e) {
+      if (attempt === 1) throw e;
+      await new Promise((r) => setTimeout(r, 600));
+    }
+  }
+  return null;
+}
+
+function cleanWikiCell(html) {
+  return String(html || "")
+    .replace(/title="(\d+\.?\d*)\s*\/\s*(\d+)\s*stars?"/gi, "$1/$2")
+    .replace(/&#91;/g, "[")
+    .replace(/&#93;/g, "]")
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<li[^>]*>/gi, "")
+    .replace(/<\/li>/gi, ",")
+    .replace(/<\/dd>/gi, ",")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\.[a-zA-Z0-9_-]+\s*\{[^}]*\}/g, " ")
+    .replace(/\[\s*\d+\s*\]/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;|&#x27;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseWikiTables(html) {
+  const tables = [];
+  const tableRe = /<table[^>]*>([\s\S]*?)<\/table>/gi;
+  let tm;
+  while ((tm = tableRe.exec(html)) !== null) {
+    const rows = [];
+    const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+    let rm;
+    while ((rm = rowRe.exec(tm[1])) !== null) {
+      const cells = [...rm[1].matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi)].map((m) => cleanWikiCell(m[1]));
+      if (cells.length) rows.push(cells);
+    }
+    if (rows.length) tables.push(rows);
+  }
+  return tables;
+}
+
+function normalizeRatingText(rating) {
+  const r = String(rating || "").trim();
+  const starMatch = r.match(/^(Star)+$/i);
+  if (starMatch) return `${starMatch[0].length / 5}/5`;
+  const score = r.match(/(\d+\.?\d*)\s*\/\s*(\d+)/);
+  return score ? `${score[1]}/${score[2]}` : r;
+}
+
+function classifyWikiTables(tables) {
+  const charts = [], yearEnd = [], aggregate = [], reviews = [];
+  for (const rows of tables) {
+    const hi = rows.findIndex((r) => /^(source|publication|rating|chart|peak|list|rank|title|writer|producer|no\.)/i.test((r.join(" ") || "").trim()));
+    if (hi < 0) continue;
+    const head = rows[hi].join(" ");
+    const dataRows = rows.slice(hi + 1);
+    if (/chart|peak/i.test(head)) {
+      for (const r of dataRows) {
+        if (r.length >= 2 && r[0] && r[1]) charts.push({ chart: r[0], peak: r[1] });
+      }
+    } else if (/publication|list|rank/i.test(head)) {
+      for (const r of dataRows) {
+        const rankRaw = (r[2] || "").replace(/\s+/g, " ").trim();
+        const rank = (/^(—|–|-|n\/?a)$/i.test(rankRaw) || /^—?\s*n\/?a$/i.test(rankRaw)) ? "" : rankRaw;
+        if (r.length >= 3) yearEnd.push({ publication: r[0], list: r[1], rank });
+        else if (r.length >= 2) yearEnd.push({ publication: r[0], list: r[1], rank: "" });
+      }
+    } else if (/source|rating|publication|score/i.test(head)) {
+      let bucket = (hi > 0 && /aggregate/i.test(rows[hi - 1].join(" "))) ? "aggregate" : "reviews";
+      for (const r of dataRows) {
+        const joined = r.join(" ");
+        if (/aggregate scores?/i.test(joined)) { bucket = "aggregate"; continue; }
+        if (/review scores?/i.test(joined)) { bucket = "reviews"; continue; }
+        if (/^source\s+rating$/i.test(joined) || /^(source|rating)$/i.test(joined)) continue;
+        if (r.length >= 2 && r[0] && r[1]) (bucket === "aggregate" ? aggregate : reviews).push({ source: r[0], rating: normalizeRatingText(r[1]) });
+      }
+    }
+  }
+  return { charts, yearEnd, aggregate, reviews };
+}
+
+function splitCredits(s) {
+  return String(s || "")
+    .split(/[,，、;；/]+/)
+    .map((x) => x.replace(/^\[.*?\]$/g, "").trim())
+    .filter(Boolean);
+}
+
+function parseWikiTrackCredits(html, songTitle) {
+  const tables = parseWikiTables(html || "");
+  const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, "");
+  const target = norm(songTitle);
+  for (const rows of tables) {
+    const head = rows[0] || [];
+    const wi = head.findIndex((h) => /writer/i.test(h));
+    const pi = head.findIndex((h) => /producer/i.test(h));
+    const ti = head.findIndex((h) => /title|song|track/i.test(h));
+    if (wi < 0 && pi < 0) continue;
+    for (const r of rows.slice(1)) {
+      const titleCell = r[ti] || r[0] || "";
+      if (target && !norm(titleCell).includes(target) && !target.includes(norm(titleCell))) continue;
+      return {
+        title: titleCell,
+        writers: wi >= 0 ? splitCredits(r[wi]) : [],
+        producers: pi >= 0 ? splitCredits(r[pi]) : [],
+      };
+    }
+  }
+  return null;
+}
+
+function buildWikiData(r, songTitle) {
+  const chartsTables = classifyWikiTables(r.charts?.tables || []);
+  const yearTables = classifyWikiTables([...(r.yearEnd?.tables || []), ...(r.reception?.tables || [])]);
+  const rateTables = classifyWikiTables(r.reception?.tables || []);
+  const tableRatings = (rateTables.aggregate.length || rateTables.reviews.length)
+    ? { aggregate: rateTables.aggregate, reviews: rateTables.reviews }
+    : (r.reception?.tableScores
+      ? { aggregate: [], reviews: Object.entries(r.reception.tableScores).map(([k, v]) => ({ source: k, rating: `${v.score}/${v.max}` })) }
+      : { aggregate: [], reviews: [] });
+  return {
+    charts: chartsTables.charts,
+    yearEnd: yearTables.yearEnd,
+    ratings: tableRatings,
+    credits: songTitle ? parseWikiTrackCredits(r.trackListing?.html || "", songTitle) : null,
+  };
 }
 
 /**
@@ -174,14 +384,15 @@ function parseWikiScoringTable(html) {
     // 排除表头行
     if (/^(Source|Publication|Aggregate|Review|Critic)/i.test(pubRaw)) continue;
 
-    // 匹配评分格式: "7/10" / "4/5" / "6.7/10" / "77/100"
+    // 匹配评分格式: "7/10" / "4/5" / "6.7/10" / "77/100" / "StarStarStarStar"
     const scoreMatch = ratingRaw.match(/(\d+\.?\d*)\s*\/\s*(\d+)/);
-    if (scoreMatch) {
+    const starMatch = ratingRaw.match(/^(Star)+$/i);
+    if (scoreMatch || starMatch) {
       const key = pubRaw.toLowerCase().replace(/[^a-z]/g, "");
       const urlMatch = m[1].match(/href="([^"]+)"/);
       scores[key] = {
-        score: parseFloat(scoreMatch[1]),
-        max: parseInt(scoreMatch[2]),
+        score: scoreMatch ? parseFloat(scoreMatch[1]) : starMatch[0].length / 5,
+        max: scoreMatch ? parseInt(scoreMatch[2]) : 5,
         publication: pubRaw,
         url: urlMatch ? (urlMatch[1].startsWith("http") ? urlMatch[1] : `https://en.wikipedia.org${urlMatch[1]}`) : undefined,
       };
