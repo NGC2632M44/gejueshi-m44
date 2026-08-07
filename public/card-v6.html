@@ -528,14 +528,13 @@ function renderDataPages(data) {
     return maxLen > 26 ? "data-list cols-1" : "data-list cols-2";
   };
 
-  // 榜单已按影响力排序（researcher.sortChartsByInfluence）：
-  // 数据页 1 放参数+热度+影响力前 18 条；数据页 2 放其余榜单+年终榜+专业评分；
-  // 超出部分自动进入数据页 3。全部展示，不截断。
+  // 优先保证 PROFESSIONAL RATINGS 完整显示（数据页 1），
+  // 榜单按影响力排序后放剩余页面（数据页 2/3），能放多少放多少。
   const charts = dp.charts || [];
   const yearEnd = dp.yearEnd || [];
   const ratings = dp.ratings || { aggregate: [], reviews: [] };
   const chartsChunks = chunkList(charts, 18);
-  const yearChunks = chunkList(yearEnd, 12);
+  const yearChunks = chunkList(yearEnd, 10);
   const revChunks = chunkList(ratings.reviews || [], 16);
   const aggHtml = dataBlock("PROFESSIONAL RATINGS · AGGREGATE", ratings.aggregate || [], r => r.source, r => r.rating, listCols(ratings.aggregate || [], r => r.source + " " + r.rating));
 
@@ -566,25 +565,26 @@ function renderDataPages(data) {
     '</section>';
 
   const pages = [];
-  // 数据页 1：参数 + 热度 + 影响力 Top18 榜单
+  // 数据页 1：参数 + 热度 + 专业评分（聚合 + 全部媒体评分，优先保证显示完）
   const p1Body =
     (rows ? '<div class="data-grid">' + rows + heatCells + '</div>' : "") +
-    (chartsChunks[0] ? chartBlock(chartsChunks[0]) : "");
-  pages.push(pageWrap(p1Body));
-
-  // 数据页 2：剩余榜单 + 年终榜 + 聚合评分 + 前 16 条媒体评分
-  const p2Body =
-    (chartsChunks[1] ? chartBlock(chartsChunks[1]) : "") +
-    (yearChunks[0] ? yearBlock(yearChunks[0]) : "") +
     aggHtml +
     (revChunks[0] ? revBlock(revChunks[0], "PROFESSIONAL RATINGS · REVIEWS") : "");
+  pages.push(pageWrap(p1Body));
+
+  // 数据页 2：溢出的媒体评分 + 影响力前 18 条榜单 + 年终榜
+  const p2Body =
+    (revChunks[1] ? revBlock(revChunks[1], "PROFESSIONAL RATINGS · REVIEWS (CONT.)") : "") +
+    (chartsChunks[0] ? chartBlock(chartsChunks[0]) : "") +
+    (yearChunks[0] ? yearBlock(yearChunks[0]) : "") +
+    "";
   if (p2Body.trim()) pages.push(pageWrap(p2Body));
 
-  // 数据页 3：溢出内容（极少见）
+  // 数据页 3：剩余榜单 / 年终榜
   const p3Body =
-    (chartsChunks[2] ? chartBlock(chartsChunks[2]) : "") +
+    (chartsChunks[1] ? chartBlock(chartsChunks[1]) : "") +
     (yearChunks[1] ? yearBlock(yearChunks[1]) : "") +
-    (revChunks[1] ? revBlock(revChunks[1], "PROFESSIONAL RATINGS · REVIEWS (CONT.)") : "");
+    "";
   if (p3Body.trim()) pages.push(pageWrap(p3Body));
 
   return pages.join("");
