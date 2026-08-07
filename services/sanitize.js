@@ -17,7 +17,7 @@ export function sanitizeOneLiner(value) {
     text = text.replace(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), "g"), "");
   }
   const isCJK = /[\u4e00-\u9fff]/.test(text);
-  const LIMIT = isCJK ? 20 : 100;
+  const LIMIT = isCJK ? 20 : 70;
   if (text.length > LIMIT) {
     if (!isCJK) {
       // 英文优先在完整句号处收尾（放宽到 140 字符窗口找句号），
