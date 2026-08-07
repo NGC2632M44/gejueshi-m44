@@ -16,15 +16,23 @@ export function sanitizeOneLiner(value) {
     text = text.replace(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), "g"), "");
   }
   const isCJK = /[\u4e00-\u9fff]/.test(text);
-  const LIMIT = isCJK ? 20 : 90;
+  const LIMIT = isCJK ? 20 : 100;
   if (text.length > LIMIT) {
-    const slice = text.slice(0, LIMIT);
     if (!isCJK) {
-      // 英文优先在完整句号处截断，其次按词边界，不切断单词、不追加省略号/中文句号
-      const sent = Math.max(slice.lastIndexOf("."), slice.lastIndexOf("!"), slice.lastIndexOf("?"));
-      const lastSpace = slice.lastIndexOf(" ");
-      text = (sent > LIMIT * 0.5 ? slice.slice(0, sent + 1) : (lastSpace > LIMIT * 0.4 ? slice.slice(0, lastSpace) : slice)).trim();
+      // 英文优先在完整句号处收尾（放宽到 140 字符窗口找句号），
+      // 否则按词边界（含连字符）截断，绝不切断单词、不追加省略号/中文句号
+      const window = text.slice(0, LIMIT + 40);
+      const sent = Math.max(window.lastIndexOf("."), window.lastIndexOf("!"), window.lastIndexOf("?"));
+      if (sent > LIMIT * 0.4) {
+        text = window.slice(0, sent + 1).trim();
+      } else {
+        const slice = text.slice(0, LIMIT);
+        const m = slice.match(/[\s\/-][A-Za-z0-9'’]+$/);
+        text = (m ? slice.slice(0, m.index + 1) : slice).trim();
+        text = text.replace(/[-–—\/\s]+$/, "");
+      }
     } else {
+      const slice = text.slice(0, LIMIT);
       const lastPunct = Math.max(slice.lastIndexOf("。"), slice.lastIndexOf("，"), slice.lastIndexOf("；"));
       text = lastPunct > LIMIT * 0.6 ? slice.slice(0, lastPunct + 1) : slice;
     }

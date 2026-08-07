@@ -558,7 +558,7 @@ export function buildScoringPrompt(audioFeatures, listeningAnswers = "", albumMe
   prompts.push('  "唱": {"score": 0, "rationale": "演唱/演奏表现（150-220字，描述声音特质）"},');
   prompts.push('  "混": {"score": 0, "rationale": "混音/制作/声音质感（150-220字，基于LUFS、动态幅度、立体声宽度等数据描述）"},');
   prompts.push('  "totalScore": 0,');
-  prompts.push(`  "oneLiner": "${oneLinerLang === "en" ? "One-sentence verdict (max 90 chars, must be a complete sentence, like a friend sharing the song, no hype)" : "一句话总评（中文歌曲用中文，不超过18个字，像发朋友圈，不要标题党）"}",`);
+  prompts.push(`  "oneLiner": "${oneLinerLang === "en" ? "One-sentence verdict (max 100 chars, must be a complete sentence ending with a period, like a friend sharing the song, no hype)" : "一句话总评（中文歌曲用中文，不超过18个字，像发朋友圈，不要标题党）"}",`);
   prompts.push('  "tags": ["Indie Rock", "Post-Punk", "Dream Pop"],');
   prompts.push('  "calibration": "简述你的评分与平台共识的关系（一致/略高/略低/偏离，为什么）"');
   prompts.push("}");
@@ -585,7 +585,7 @@ export function buildScoringPrompt(audioFeatures, listeningAnswers = "", albumMe
   prompts.push("");
   prompts.push("oneLiner 要求:");
   prompts.push("- 12-18字，像发朋友圈分享听歌感受，自然不夸张");
-  prompts.push("- 英文歌曲用英文写（最多90字符，必须是完整句子，不半句截断），中文歌曲用中文写（12-18字）");
+  prompts.push("- 英文歌曲用英文写（最多100字符，必须是完整句子并以句号结尾，不半句截断），中文歌曲用中文写（12-18字）");
   prompts.push("- 好: \"126拍的自我审视，镜头关了就只剩自己\"");
   prompts.push("- 坏: \"一张充满激情与创新的优秀专辑\" ← 太空洞");
   prompts.push("");
@@ -729,15 +729,24 @@ export function calcHeatScore(heat) {
   if (albumCollect) domSources.push(`网易云专辑收藏 ${formatNumber(albumCollect)}`);
   if (nePlaycount) domSources.push(`网易云热度 ${nePlaycount}/100`);
 
+  const playStars = nePlaycount >= 95 ? 5 : nePlaycount >= 85 ? 3 : nePlaycount >= 70 ? 2 : nePlaycount >= 55 ? 1 : 0;
+  const domSignals = [];
+  if (songComments) domSignals.push({ label: (qqComments > neSongComments ? "QQ单曲评论" : "NC单曲评论"), stars: tierOf(songComments, SONG_COMMENT_TIERS), value: songComments });
+  if (songCollect) domSignals.push({ label: "NC单曲收藏", stars: tierOf(songCollect, SONG_COLLECT_TIERS), value: songCollect });
+  if (albumComments) domSignals.push({ label: "NC专辑评论", stars: tierOf(albumComments, ALBUM_COMMENT_TIERS), value: albumComments });
+  if (albumCollect) domSignals.push({ label: "NC专辑收藏", stars: tierOf(albumCollect, ALBUM_COLLECT_TIERS), value: albumCollect });
+  if (nePlaycount) domSignals.push({ label: "NC热度", stars: playStars, value: nePlaycount });
+  const top2 = domSignals.sort((a, b) => b.stars - a.stars || b.value - a.value).slice(0, 2);
+  const domDetail = top2.map((x) => `${x.label} ${x.value.toLocaleString()}`).join("；") || "No domestic heat data";
+
   const domStars = Math.max(
     tierOf(songComments, SONG_COMMENT_TIERS),
     tierOf(songCollect, SONG_COLLECT_TIERS),
     tierOf(albumComments, ALBUM_COMMENT_TIERS),
     tierOf(albumCollect, ALBUM_COLLECT_TIERS),
-    nePlaycount >= 95 ? 5 : nePlaycount >= 85 ? 3 : nePlaycount >= 70 ? 2 : nePlaycount >= 55 ? 1 : 0
+    playStars
   );
   const domLabel = ["", "★☆☆☆☆", "★★☆☆☆", "★★★☆☆", "★★★★☆", "★★★★★"][domStars] || "☆☆☆☆☆";
-  const domDetail = domSources.join("；") || "No domestic heat data";
 
   // ── 国外热度（●）：Last.fm / YouTube / Discogs / RYM / Genius / Google Trends / Chartmetric ──
   const listeners = pick("lastfm_listeners");
@@ -749,10 +758,10 @@ export function calcHeatScore(heat) {
   const geniusViews = pick("genius_pageviews");
 
   const intlSources = [];
-  if (listeners) intlSources.push(`Last.fm ${formatNumber(listeners)}听众`);
+  if (listeners) intlSources.push(`Last.fm ${formatNumber(listeners)}`);
   if (youtube) intlSources.push(`YouTube ${formatNumber(youtube)}`);
   if (discogs) intlSources.push(`Discogs ${formatNumber(discogs)}${discogsHave && discogsWant ? `（want/have=${(discogsWant / discogsHave).toFixed(2)}）` : ""}`);
-  if (rymCount) intlSources.push(`RYM ${formatNumber(rymCount)}人`);
+  if (rymCount) intlSources.push(`RYM ${formatNumber(rymCount)}`);
   if (geniusViews) intlSources.push(`Genius ${formatNumber(geniusViews)}`);
 
   let discogsStars = tierOf(discogs, [
