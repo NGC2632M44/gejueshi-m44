@@ -23,3 +23,13 @@ test("querySongBPMByUrl is exported (endpoint import regression)", async () => {
   const mod = await import("./mir-cross-ref.js");
   assert.equal(typeof mod.querySongBPMByUrl, "function");
 });
+
+
+test("MIR cache key includes song and artist identity to avoid cross-song collisions", async () => {
+  const mod = await import("./mir-cross-ref.js");
+  const a = mod.mirCacheKeyFor("Rose Gray Louder, Please", { songTitle: "Wet & Wild", artistName: "Rose Gray" });
+  const b = mod.mirCacheKeyFor("Rose Gray Louder, Please", { songTitle: "Summer Fling", artistName: "Leroy" });
+  assert.notEqual(a, b);
+  assert.match(a, /wet/);
+  assert.match(b, /summer/);
+});

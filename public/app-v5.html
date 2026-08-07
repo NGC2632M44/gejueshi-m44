@@ -743,11 +743,10 @@ async function runAnalysis() {
     markStep(1, "done");
 
     // ── 自动 MIR 交叉验证 ──
-    const artist = $("meta-artist").value.trim();
-    const title = $("meta-title").value.trim();
-    const artistQuery = artist && title ? `${artist} - ${title}` : [artist, title].filter(Boolean).join(" ");
+    // MIR 查询优先用“联网检索”的当前歌曲/艺人，避免沿用上一首遗留的专辑搜索词
+    const onlineQ = [$("online-artist").value.trim(), $("online-song").value.trim()].filter(Boolean).join(" ");
     const searchQ = $("research-query").value.trim();
-    const mirQuery = searchQ || (af.filename || "").replace(/\.[^.]+$/, "").replace(/[-_]/g, " ");
+    const mirQuery = onlineQ || searchQ || (af.filename || "").replace(/\.[^.]+$/, "").replace(/[-_]/g, " ");
     if (mirQuery) {
       busy("analyze-status", "MIR交叉验证中…");
       try {
@@ -911,6 +910,12 @@ function showMIRPanel(mirData) {
       chordEl.innerHTML = `和弦进行: <b>${escapeHTML(ce.formatted)}</b>${romanNote} — 来源: ${escapeHTML(srcName)}` +
         (ce.url ? `（<a href="${escapeHTML(ce.url)}" target="_blank" style="color:inherit">原页面</a>）` : "") +
         (localTop ? `；本地检测高频和弦: ${escapeHTML(localTop)}` : "");
+      panel.insertBefore(chordEl, panel.querySelector(".row"));
+    } else if (mirData.local_chord_progression) {
+      const chordEl = document.createElement("div");
+      chordEl.className = "mir-dynamic";
+      chordEl.style.cssText = "margin:6px 0 8px;font:10px var(--f-mono);color:var(--ink-3)";
+      chordEl.innerHTML = `本地高频和弦: <b>${escapeHTML(mirData.local_chord_progression)}</b>（仅参考，未外部验证）`;
       panel.insertBefore(chordEl, panel.querySelector(".row"));
     }
 

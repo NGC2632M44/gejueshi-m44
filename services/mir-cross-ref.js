@@ -21,19 +21,25 @@ const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 const CACHE_TTL = 3600000; // 1 小时
 const mirCache = new Map();
 
-function _cacheKey(query) {
-  return (query || "").toLowerCase().replace(/\s+/g, "_");
+export function mirCacheKeyFor(query, opts = {}) {
+  return (query || "").toLowerCase().replace(/\s+/g, "_") +
+    "|song=" + (opts.songTitle || "").toLowerCase().replace(/\s+/g, "_") +
+    "|artist=" + (opts.artistName || "").toLowerCase().replace(/\s+/g, "_");
 }
 
-function _cacheGet(query) {
-  const entry = mirCache.get(_cacheKey(query));
+function _cacheKey(query, opts) {
+  return mirCacheKeyFor(query, opts);
+}
+
+function _cacheGet(query, opts) {
+  const entry = mirCache.get(_cacheKey(query, opts));
   if (entry && Date.now() - entry.ts < CACHE_TTL) return entry.data;
-  if (entry) mirCache.delete(_cacheKey(query));
+  if (entry) mirCache.delete(_cacheKey(query, opts));
   return null;
 }
 
-function _cacheSet(query, data) {
-  mirCache.set(_cacheKey(query), { data, ts: Date.now() });
+function _cacheSet(query, data, opts) {
+  mirCache.set(_cacheKey(query, opts), { data, ts: Date.now() });
 }
 
 function _slugifyPart(value) {
@@ -272,7 +278,7 @@ async function queryMusicBrainz(query) {
  */
 export async function mirCrossReference(query, localResult, opts = {}) {
   // 缓存检查
-  const cached = _cacheGet(query);
+  const cached = _cacheGet(query, opts);
   if (cached) {
     console.log(`   💾 MIR缓存命中: "${query}" (${Math.round((Date.now() - cached._cachedAt) / 1000)}s前)`);
     return { ...cached, fromCache: true };
@@ -338,7 +344,8 @@ export async function mirCrossReference(query, localResult, opts = {}) {
   const chordSource = external.find(s => s.chord_sequence);
   const netChordLetters = formatChordSequence(chordSource?.chord_sequence || null);
   const localChordLetters = topChordProgression(localResult);
-  let chordDisplay = netChordLetters || localChordLetters || null;
+  // 主和弦进行只采用外部已验证来源；本地高频和弦单独作为参考展示
+  let chordDisplay = netChordLetters || null;
   let chordRomanMode = false;
   let chordKeyNote = null;
   const netKey = crossRef.key_consensus || localResult?.key || null;
@@ -384,11 +391,12 @@ export async function mirCrossReference(query, localResult, opts = {}) {
     reliability,
     recommended,
     chord_evidence,
+    local_chord_progression: localChordLetters,
     elapsed_ms: Date.now() - start,
     _cachedAt: Date.now(),
   };
 
-  _cacheSet(query, result);
+  _cacheSet(query, result, opts);
 
   return result;
 }
