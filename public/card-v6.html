@@ -61,14 +61,14 @@ body{
 .p-cover .glow{position:absolute;inset:0;background:
   radial-gradient(700px 500px at 85% 8%, hsla(var(--hue,352),55%,30%,.40), transparent 60%),
   radial-gradient(600px 600px at 8% 95%, hsla(var(--hue,352),60%,20%,.5), transparent 65%)}
-.p-cover .inner{position:relative;z-index:2;flex:1;display:flex;flex-direction:column;padding:30px 48px 20px}
+.p-cover .inner{position:relative;z-index:2;flex:1;display:flex;flex-direction:column;padding:20px 48px 14px}
 .cover-top{display:flex;justify-content:space-between;align-items:flex-start;
   border-bottom:1px solid rgba(243,238,226,.22);padding-bottom:14px}
 .cover-top .brand{font:700 15px var(--f-mono);letter-spacing:6px}
 .cover-top .brand b{color:var(--accent);font-weight:400}
 .cover-top .date{font:10px var(--f-mono);letter-spacing:2px;color:rgba(243,238,226,.6);text-align:right;line-height:1.9}
-.sleeve-zone{flex:1;display:flex;align-items:center;justify-content:center;padding:16px 0 4px;min-height:0}
-.sleeve{width:210px;height:210px;position:relative;background-size:cover;background-position:center;
+.sleeve-zone{flex:1;display:flex;align-items:center;justify-content:center;padding:6px 0 2px;min-height:0}
+.sleeve{width:188px;height:188px;position:relative;background-size:cover;background-position:center;
   border:1px solid rgba(243,238,226,.28);
   box-shadow:0 36px 80px -16px rgba(0,0,0,.85), 0 0 0 8px rgba(243,238,226,.05);
   animation:sleeveIn 1s cubic-bezier(.22,1,.36,1) both}
@@ -82,19 +82,51 @@ body{
 .c-title{font:900 38px/1.2 var(--f-serif);letter-spacing:0;margin-top:10px;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .c-meta{font:11px var(--f-mono);letter-spacing:2px;color:rgba(243,238,226,.62);margin-top:12px}
-.c-score-band{display:flex;align-items:center;justify-content:center;gap:30px;margin-top:16px;
-  padding-top:14px;border-top:1px solid rgba(243,238,226,.22);animation:riseIn .8s .45s both}
+.c-score-band{display:flex;align-items:center;justify-content:center;gap:30px;margin-top:10px;
+  padding-top:10px;border-top:1px solid rgba(243,238,226,.22);animation:riseIn .8s .45s both}
 .c-total{display:flex;align-items:baseline;gap:8px}
 .c-total .num{font:900 74px/0.95 var(--f-serif);color:var(--accent);letter-spacing:-3px}
 .c-total .of{font:11px var(--f-mono);letter-spacing:2px;color:rgba(243,238,226,.6);line-height:1.8;text-align:left}
 .c-heat{font:20px var(--f-mono);color:var(--gold);letter-spacing:3px;text-align:left;line-height:1.4}
 .c-heat small{display:block;font:9px var(--f-mono);letter-spacing:3px;color:rgba(243,238,226,.55)}
-.c-oneliner{margin-top:12px;font:600 18px/1.4 var(--f-serif);color:#f3eee2;animation:riseIn .8s .6s both;
+.c-oneliner{margin-top:8px;font:600 18px/1.4 var(--f-serif);color:#f3eee2;animation:riseIn .8s .6s both;
   overflow:hidden;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical}
-.c-tags{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px;color:rgba(243,238,226,.85);
+.c-tags{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:8px;color:rgba(243,238,226,.85);
   animation:riseIn .8s .7s both}
-.c-summary{margin:14px 38px 0;font:14px/2 var(--f-serif);color:rgba(243,238,226,.62);text-align:center;
+.c-summary{margin:8px 38px 0;font:13px/1.9 var(--f-serif);color:rgba(243,238,226,.62);text-align:center;
   display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+/* ========== P2 Verified Data (dark, objective) ========== */
+.p-data{height:750px;background:var(--night-2);color:#f3eee2;display:flex;flex-direction:column}
+.p-data .glow{position:absolute;inset:0;background:
+  radial-gradient(700px 480px at 88% 4%, hsla(var(--hue,352),52%,26%,.34), transparent 60%),
+  radial-gradient(560px 520px at 6% 96%, hsla(var(--hue,352),55%,16%,.45), transparent 65%)}
+.p-data .inner{position:relative;z-index:2;flex:1;display:flex;flex-direction:column;min-height:0}
+.data-head{display:flex;align-items:center;gap:18px;padding:18px 40px 14px;border-bottom:1px solid rgba(243,238,226,.18)}
+.data-head .thumbbox{width:76px;height:76px;font-size:24px;border-color:rgba(243,238,226,.22)}
+.data-head .who{flex:1;min-width:0}
+.data-head .who .a{font:12px var(--f-mono);letter-spacing:4px;text-transform:uppercase;color:rgba(243,238,226,.72)}
+.data-head .who .t{font:700 27px/1.25 var(--f-sans);margin-top:2px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.data-head .who .m{font:11px var(--f-mono);letter-spacing:1px;color:rgba(243,238,226,.55);margin-top:3px}
+.data-head .tot{text-align:right}
+.data-head .tot .n{font:900 46px/1 var(--f-serif);color:var(--accent)}
+.data-head .tot .n em{font:12px var(--f-mono);font-style:normal;color:rgba(243,238,226,.6)}
+.data-head .tot .l{font:10px var(--f-mono);letter-spacing:3px;color:rgba(243,238,226,.55)}
+.data-body{flex:1;display:flex;flex-direction:column;padding:12px 40px 6px;min-height:0;overflow:hidden}
+.data-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 18px}
+.data-cell{display:flex;flex-direction:column;border-bottom:1px solid rgba(243,238,226,.12);padding:5px 0 4px}
+.data-cell .k{font:9px var(--f-mono);letter-spacing:2px;color:rgba(243,238,226,.5);text-transform:uppercase}
+.data-cell .v{font:600 17px/1.35 var(--f-serif);color:#f3eee2;margin-top:2px}
+.data-cell .s{font:9px var(--f-mono);color:rgba(243,238,226,.42);margin-top:1px}
+.data-heat{display:flex;gap:14px;margin-top:8px;flex-wrap:wrap}
+.data-heat .hcard{border:1px solid rgba(243,238,226,.2);border-radius:8px;padding:8px 14px;flex:1;min-width:200px}
+.data-heat .hcard .hk{font:9px var(--f-mono);letter-spacing:2px;color:rgba(243,238,226,.55)}
+.data-heat .hcard .hv{font:700 20px var(--f-mono);color:var(--gold);margin-top:4px;letter-spacing:2px}
+.data-heat .hcard .hd{font:10px/1.6 var(--f-mono);color:rgba(243,238,226,.55);margin-top:3px}
+.data-charts{margin-top:8px;font:11px/1.7 var(--f-serif);color:rgba(243,238,226,.72);
+  border-left:2px solid rgba(201,162,77,.5);padding-left:12px;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.data-foot{display:flex;justify-content:space-between;align-items:center;padding:10px 40px 14px;
+  border-top:1px solid rgba(243,238,226,.16);font:9px var(--f-mono);letter-spacing:2px;color:rgba(243,238,226,.5)}
 /* ========== P2 Radar (Douyin-friendly) ========== */
 .p-radar{height:750px;display:flex;flex-direction:column}
 .r-head{display:flex;align-items:center;gap:18px;padding:20px 40px 16px;border-bottom:2px solid var(--ink);position:relative;z-index:2}
@@ -283,9 +315,16 @@ const maxScore = 20;
 
 function levelOf(v){ return v >= 18 ? "优秀" : v >= 16 ? "良好" : v >= 12 ? "一般" : v >= 10 ? "合格" : "短板"; }
 function calcHeat(heat) {
-  const c = (heat && heat.netease_comments) || 0;
-  const stars = c >= 10000 ? 5 : c >= 999 ? 4 : c >= 300 ? 3 : c >= 50 ? 2 : c > 0 ? 1 : 0;
-  return { stars, label: "★".repeat(stars) + "☆".repeat(5 - stars), comments: c };
+  const h = heat || {};
+  const comments = (h.netease_song_comments || 0) + (h.netease_album_comments || 0) + (h.netease_comments || 0);
+  const domStars = comments >= 50000 ? 5 : comments >= 5000 ? 4 : comments >= 999 ? 3 : comments >= 300 ? 2 : comments >= 100 ? 1 : 0;
+  return {
+    stars: domStars,
+    label: "★".repeat(domStars) + "☆".repeat(5 - domStars),
+    comments,
+    domestic: { stars: domStars, label: "★".repeat(domStars) + "☆".repeat(5 - domStars), sources: [], detail: comments ? ("网易云评论 " + comments) : "无国内热度数据" },
+    international: { stars: 0, label: "○○○○○", sources: [], detail: "无国外热度数据" },
+  };
 }
 function getHeatScore(data) {
   if (data.heatScore && typeof data.heatScore.stars === "number") {
@@ -383,8 +422,15 @@ function dateOf(data){
   return m ? m[0] : localDate();
 }
 function heatText(heat){
-  if (heat.stars <= 0) return "";
-  return heat.label + "<small>热度 HEAT</small>";
+  const h = heat || {};
+  const dom = h.domestic || {};
+  const intl = h.international || {};
+  const parts = [];
+  if (dom.stars) parts.push("国内 " + dom.label);
+  if (intl.stars) parts.push("国外 " + intl.label);
+  if (!parts.length && h.stars) parts.push(h.label);
+  if (!parts.length) return "";
+  return parts.join(" · ") + "<small>热度 HEAT</small>";
 }
 
 function renderCoverPage(data) {
@@ -421,6 +467,44 @@ function renderCoverPage(data) {
   '</section>';
 }
 
+function renderDataPage(data) {
+  const heat = getHeatScore(data);
+  const meta = metaOf(data);
+  const dp = data.dataPage || {};
+  const params = dp.params || [];
+  const hue = hashHue((data.artist || "") + (data.title || ""));
+  const rows = params.map(p =>
+    '<div class="data-cell"><span class="k">' + escapeHTML(p.label) + '</span><span class="v">' + escapeHTML(p.value) + '</span>' +
+    (p.source ? '<span class="s">' + escapeHTML(p.source) + '</span>' : "") + '</div>'
+  ).join("");
+  const heatDom = heat.domestic || {};
+  const heatIntl = heat.international || {};
+  return '<section class="page p-data" style="--hue:' + hue + '">' +
+    '<div class="glow"></div>' +
+    '<div class="frame-line"></div>' + corners() +
+    '<div class="inner">' +
+      '<header class="data-head">' +
+        '<div class="thumbbox">' + thumbImg(data) + '</div>' +
+        '<div class="who">' +
+          '<div class="a">' + escapeHTML(data.artist || "") + '</div>' +
+          '<div class="t">' + escapeHTML(data.title || "") + '</div>' +
+          (meta ? '<div class="m">' + escapeHTML(meta) + '</div>' : "") +
+        '</div>' +
+        '<div class="tot"><div class="n">' + (data.totalScore ?? "—") + '<em>/' + (activeDims(data.scores).length * maxScore) + '</em></div><div class="l">TOTAL 总分</div></div>' +
+      '</header>' +
+      '<div class="data-body">' +
+        (rows ? '<div class="data-grid">' + rows + '</div>' : "") +
+        '<div class="data-heat">' +
+          '<div class="hcard"><div class="hk">国内热度 DOMESTIC</div><div class="hv">' + escapeHTML(heatDom.label || "☆☆☆☆☆") + '</div><div class="hd">' + escapeHTML(heatDom.detail || "无数据") + '</div></div>' +
+          '<div class="hcard"><div class="hk">国外热度 OVERSEAS</div><div class="hv">' + escapeHTML(heatIntl.label || "○○○○○") + '</div><div class="hd">' + escapeHTML(heatIntl.detail || "无数据") + '</div></div>' +
+        '</div>' +
+        (dp.charts ? '<div class="data-charts"><b>榜单/背景 </b>' + escapeHTML(dp.charts) + '</div>' : "") +
+      '</div>' +
+      '<footer class="data-foot"><span>M44 SOUND ANATOMY</span><span>VERIFIED DATA · ' + dateOf(data) + '</span></footer>' +
+    '</div>' +
+  '</section>';
+}
+
 function renderRadarPage(data) {
   const heat = getHeatScore(data);
   const meta = metaOf(data);
@@ -448,7 +532,7 @@ function renderRadarPage(data) {
     '</div>' +
     '<div class="r-verdict">' +
       (data.oneLiner ? '<div class="vo">' + escapeHTML(data.oneLiner) + '</div>' : "") +
-      (heat.stars > 0 ? '<div class="heat">' + heat.label + '<small>热度 HEAT</small></div>' : "") +
+      (heat.stars > 0 ? '<div class="heat">' + heatText(heat) + '</div>' : "") +
       '<div class="brand">M44 SOUND ANATOMY · ' + dateOf(data) + '</div>' +
     '</div>' +
   '</section>';
@@ -511,7 +595,7 @@ function renderSummaryPage(data) {
     '<div class="sum-rest"></div>' +
     '<footer class="sum-foot">' +
       '<div class="line1">' +
-        (heat.stars > 0 ? '<div class="heat">' + heat.label + ' <small>热度 HEAT</small></div>' : "<span></span>") +
+        (heat.stars > 0 ? '<div class="heat">' + heatText(heat) + '</div>' : "<span></span>") +
         '<div class="chip">总分 ' + (data.totalScore ?? "—") + '</div>' +
       '</div>' +
       (data.note ? '<div class="note">' + escapeHTML(data.note) + '</div>' : "") +
@@ -594,7 +678,7 @@ window.addEventListener("resize", fitStage);
 // ============ Boot ============
 function renderAll(data) {
   const useDims = activeDims(data.scores || {});
-  let html = renderCoverPage(data) + renderRadarPage(data);
+  let html = renderCoverPage(data) + renderDataPage(data) + renderRadarPage(data);
   useDims.forEach((d, i) => { html += renderDimPage(data, d, i, i, useDims.length); });
   html += renderSummaryPage(data);
   document.getElementById("pages").innerHTML = html;

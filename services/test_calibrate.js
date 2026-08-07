@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { buildBasicCalibration, cleanYouTubeTitle, durationConsensus } from "./calibrate.js";
+import { formatChordSequence } from "./audio-analyzer.js";
 
 
 test("cleanYouTubeTitle removes artist prefix and qualifier suffix", () => {
@@ -43,4 +44,12 @@ test("buildBasicCalibration fuses title/artist/album/year/label/duration", () =>
   assert.equal(cal.label.value, "Play It Again Sam Records");
   assert.equal(cal.duration.value, 182);
   assert.equal(cal.durationCheck.match, true);
+});
+
+
+test("formatChordSequence compacts full chord names", () => {
+  assert.equal(formatChordSequence("A minor, D minor, E minor"), "Am-Dm-Em");
+  assert.equal(formatChordSequence("C major / G major / Am"), "C-G-Am");
+  assert.equal(formatChordSequence("C# minor, Bb major"), "C#m-Bb");
+  assert.equal(formatChordSequence(null), null);
 });

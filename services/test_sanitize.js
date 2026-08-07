@@ -61,3 +61,18 @@ test("sanitizeOneLiner handles top-level card oneLiner", () => {
   assert.equal(sanitizeOneLiner("很稳 [混音:LUFS=-7.6]。"), "很稳。");
   assert.doesNotMatch(sanitizeOneLiner("很稳的一首 [混音:LUFS=-7.6]，"), /\[/);
 });
+
+
+test("sanitize removes review-meta language and keeps apostrophes intact", () => {
+  const scores = {
+    曲: {
+      score: 15,
+      rationale: "乐评里提到这首歌的副歌记忆点强，歌词「My mascara runs, but it's just the rain」把情绪收住。",
+    },
+  };
+  sanitizeScores(scores);
+  assert.doesNotMatch(scores.曲.rationale, /乐评里提到/);
+  assert.match(scores.曲.rationale, /副歌记忆点强/);
+  assert.match(scores.曲.rationale, /it's/);
+  assert.doesNotMatch(scores.曲.rationale, /」s/);
+});

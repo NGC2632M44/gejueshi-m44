@@ -157,7 +157,8 @@ app.post("/api/analyze/score", async (req, res) => {
       heat,
       req.body.lyrics || "",
       researchData,
-      req.body.ratingScope || "song"
+      req.body.ratingScope || "song",
+      req.body.oneLinerLang || "zh"
     );
 
     const response = await callAI({
@@ -269,8 +270,7 @@ app.post("/api/card/v4", async (req, res) => {
 
   // 计算热度星级
   const heatData = cardData.heat || {};
-  const heatScore = calcHeatScore(heatData);
-  cardData.heatScore = heatScore;
+  if (!cardData.heatScore) cardData.heatScore = calcHeatScore(heatData);
   cardData.heat = heatData;
   cardData._apiBase = `${req.protocol}://${req.get("host")}`;
   // 远程封面统一走本机图片代理（直连失败会经 GEJUESHI_PROXY_URL）
@@ -495,6 +495,11 @@ app.post("/api/research/calibrate", (req, res) => {
     discogsTop,
   });
   res.json({ success: true, calibration });
+});
+
+// 热度计算（国内★/国外●分拆 + 透明阈值）
+app.post("/api/heat", (req, res) => {
+  res.json(calcHeatScore((req.body && req.body.heat) || {}));
 });
 
 app.get("/api/library", (req, res) => {
@@ -809,6 +814,8 @@ ${userGroundTruth || "（无）"}
 2. 歌词引用不准确 → 修正或删除
 3. 编造的具体音乐细节 → 删除
 4. 明显错误的数字解读（如 -12 LUFS 说成 club 标准）→ 修正
+5. 禁止"乐评里提到""平台评分显示""媒体评价"等元描述 → 删除或改写为内容本身
+6. 歌词引用必须完整成句；半句截断或拼错的引用 → 删除
 
 输出 JSON（score 不动）:
 {

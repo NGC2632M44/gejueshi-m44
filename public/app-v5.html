@@ -515,6 +515,11 @@ const DRAFT_FIELDS = [
 
 let _saveTimer = null;
 let _draftFlashTimer = null;
+const metaManual = new Set();
+document.addEventListener("input", (e) => {
+  const id = e.target && e.target.id;
+  if (id && id.startsWith("meta-")) metaManual.add(id);
+});
 function flashDraftIndicator() {
   const el = $("draft-indicator");
   el.classList.add("show");
@@ -750,6 +755,18 @@ async function runAnalysis() {
         if (mirData.success && mirData.recommended) {
           window._mirResult = mirData;
           showMIRPanel(mirData);
+          // 听歌指引用校准后的 BPM/Key 重新生成，避免“界面 A minor / 指引 E minor”
+          try {
+            const guideRes = await fetch(`${API}/api/analyze/guide`, {
+              method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({ audioFeatures }),
+            });
+            const guideData = await guideRes.json();
+            if (guideData.success && guideData.guide) {
+              guide.innerHTML = renderGuide(guideData.guide);
+            }
+          } catch (_) {}
           setStatus("analyze-status", "✓ 分析 + MIR验证完成", "ok");
           markStep(1, "done");
         } else {
@@ -792,6 +809,18 @@ function buildSourceChips(sources) {
     row.appendChild(chip);
   }
   return row;
+}
+
+function topChordsFromEvidence(ev) {
+  const events = ev && ev["作曲"] && ev["作曲"].chord_events;
+  if (!Array.isArray(events) || !events.length) return null;
+  const w = new Map();
+  for (const e of events) {
+    if (!e || !e.label) continue;
+    const dur = ((e.end_sec || 0) - (e.start_sec || 0)) || 0;
+    w.set(e.label, (w.get(e.label) || 0) + dur);
+  }
+  return [...w.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k]) => k).join("/") || null;
 }
 
 function showMIRPanel(mirData) {
@@ -859,6 +888,20 @@ function showMIRPanel(mirData) {
     }
     if (rec.meter) audioFeatures.meter = rec.meter;
     if (rec.chord_sequence) audioFeatures.chord_sequence = rec.chord_sequence;
+
+    // 和弦进行来源 + 本地高频和弦交叉佐证
+    const ce = mirData.chord_evidence;
+    if (ce && ce.formatted) {
+      const chordEl = document.createElement("div");
+      chordEl.className = "mir-dynamic";
+      chordEl.style.cssText = "margin:6px 0 8px;font:10px var(--f-mono);color:var(--ink-2)";
+      const localTop = topChordsFromEvidence(audioFeatures?.evidence);
+      const srcName = ce.source === "hooktheory" ? "Hooktheory 页面解析" : (ce.source || "外部源");
+      chordEl.innerHTML = `和弦进行: <b>${escapeHTML(ce.formatted)}</b> — 来源: ${escapeHTML(srcName)}` +
+        (ce.url ? `（<a href="${escapeHTML(ce.url)}" target="_blank" style="color:inherit">原页面</a>）` : "") +
+        (localTop ? `；本地检测高频和弦: ${escapeHTML(localTop)}` : "");
+      panel.insertBefore(chordEl, panel.querySelector(".row"));
+    }
 
     const statVals = document.querySelectorAll("#audio-stats .stat .v");
     if (statVals[0] && rec.bpm) statVals[0].innerHTML = `${rec.bpm}<small> BPM</small>`;
@@ -1028,7 +1071,7 @@ function onLyricsInput() {
 
 // ============ Step 2: 数据研究 ============
 function badge(label, score, max, accent){
-  return `<div class="badge${accent ? " accent" : ""}"><div class="s">${score}<em>/${max}</em></div><div class="k">${label}</div></div>`;
+  return `<div class="badge${accent ? " accent" : ""}"><div class="s">${score}${max ? `<em>/${max}</em>` : ""}</div><div class="k">${label}</div></div>`;
 }
 
 function renderStep2Sources(researchData, cn) {
@@ -1198,6 +1241,19 @@ async function runResearch() {
         strip.innerHTML += `<div class="badge"><div class="s" style="font-size:11px">↗</div><div class="k"><a href="${escapeHTML(cn.genius.url)}" target="_blank" style="color:inherit">Genius</a></div></div>`;
       }
 
+      // 国内★/国外● 热度分级（透明阈值，见 /api/heat）
+      try {
+        const hsRes = await fetch(`${API}/api/heat`, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({ heat: window._heatData }),
+        });
+        const hs = await hsRes.json();
+        window._heatScore = hs;
+        if (hs.domestic && hs.domestic.stars) strip.innerHTML += badge("国内热度", hs.domestic.label, "");
+        if (hs.international && hs.international.stars) strip.innerHTML += badge("国外热度", hs.international.label, "");
+      } catch (_) {}
+
       // 自动补全 Step4：单曲名/艺人优先，专辑名取主专辑（与 Step2 搜索联动）
       if (neSong && neSong.name && !$("meta-title").value) $("meta-title").value = neSong.name;
       if (neSong && neSong.artists && !$("meta-artist").value) $("meta-artist").value = neSong.artists;
@@ -1240,13 +1296,24 @@ async function runResearch() {
         const cal = (await calRes.json()).calibration;
         if (cal) {
           researchData.calibration = cal;
-          const fillMeta = (id, v) => { if (v && !$(`meta-${id}`).value) $(`meta-${id}`).value = v; };
-          fillMeta("title", cal.title?.value);
-          fillMeta("artist", cal.artist?.value);
-          fillMeta("album", cal.album?.value);
-          fillMeta("year", cal.year?.value);
-          fillMeta("label", cal.label?.value);
-          fillMeta("genre", cal.genre?.value);
+          // 非用户手动编辑的字段一律用 API 共识值填充/覆盖；手动字段保留并提示差异
+          const applyCal = (id, v) => { const el = $(`meta-${id}`); if (v && el && !metaManual.has(`meta-${id}`)) el.value = v; };
+          applyCal("title", cal.title?.value);
+          applyCal("artist", cal.artist?.value);
+          applyCal("album", cal.album?.value);
+          applyCal("year", cal.year?.value);
+          applyCal("label", cal.label?.value);
+          applyCal("genre", cal.genre?.value);
+          const calLabels = { title: "歌名", artist: "艺人", album: "专辑", year: "年份", label: "厂牌", genre: "流派" };
+          for (const [fid, flabel] of Object.entries(calLabels)) {
+            const c = cal[fid];
+            if (c && metaManual.has(`meta-${fid}`)) {
+              const cur = $(`meta-${fid}`).value.trim();
+              if (cur && cur !== c.value) {
+                strip.innerHTML += `<div class="badge" style="border-color:var(--accent)"><div class="s">⚠️</div><div class="k">${flabel}: 你填「${escapeHTML(cur)}」/ API校验「${escapeHTML(c.value)}」</div></div>`;
+              }
+            }
+          }
           const calParts = [];
           if (cal.title) calParts.push(`歌名 ${cal.title.count}/${cal.title.total}源`);
           if (cal.artist) calParts.push(`艺人 ${cal.artist.count}/${cal.artist.total}源`);
@@ -1413,6 +1480,36 @@ function updateCoverButtons() {
 }
 
 // ============ Step 4: 评分 + 卡片 ============
+function buildDataPage(af, heatScore, researchData, scores) {
+  const d = (af && af.dynamics) || {};
+  const sp = (af && af.spectral) || {};
+  const st = (af && af.stereo) || {};
+  const params = [];
+  const add = (label, value, source) => {
+    if (value != null && value !== "" && value !== "—" && value !== "?") params.push({ label, value: String(value), source });
+  };
+  const dur = af && af.duration_seconds;
+  add("BPM", af && af.bpm, (af && (af.bpm_method || "").includes("network")) ? "本地 sonara + 外部交叉" : (af && af.bpm_method) || "本地分析");
+  add("调性", af && af.key, (af && (af.key_method || "").includes("network")) ? "本地算法 + 外部交叉" : (af && af.key_method) || "本地分析");
+  add("时长", dur ? Math.floor(dur / 60) + ":" + String(Math.floor(dur % 60)).padStart(2, "0") : null, (researchData && researchData.calibration && researchData.calibration.durationCheck) ? "Last.fm/网易云共识" : "本地 ffprobe");
+  add("整体响度", d.integrated_lufs != null ? d.integrated_lufs.toFixed(1) + " LUFS" : null, "EBU R128");
+  add("True Peak", d.true_peak_dbtp != null ? d.true_peak_dbtp + " dBTP" : null, "ITU-R BS.1770-4");
+  add("动态范围 LRA", d.lra != null ? d.lra + " LU" : null, "EBU R128");
+  add("Crest", d.crest_factor != null ? d.crest_factor + " dB" : null, "本地分析");
+  add("立体声宽度", st.stereo_width != null ? st.stereo_width + "%" : null, "Mid/Side 分析");
+  add("相位相关", st.phase_correlation_mean != null ? st.phase_correlation_mean : null, "本地分析");
+  add("频谱质心", sp.centroid_mean != null ? Math.round(sp.centroid_mean) + " Hz" : null, "librosa");
+  add("高频衰减", sp.rolloff_mean != null ? Math.round(sp.rolloff_mean) + " Hz" : null, "librosa 95%");
+  add("频谱带宽", sp.bandwidth_mean != null ? Math.round(sp.bandwidth_mean) + " Hz" : null, "librosa");
+  add("和弦进行", (af && af.chord_sequence) || null, "Hooktheory 页面解析");
+  const agg = (researchData && researchData.aggregate) || {};
+  return {
+    params,
+    heat: heatScore || null,
+    charts: (agg.charts && agg.charts.text) ? agg.charts.text.slice(0, 800) : null,
+  };
+}
+
 async function runScoring() {
   if (!audioFeatures) return toast("请先完成 Step 1 音频分析", "err");
 
@@ -1466,7 +1563,6 @@ async function runScoring() {
 
   if (qqComments) window._heatData.qq_music_comments = qqComments;
   if (rymCount) window._heatData.rym_rating_count = rymCount;
-  if (rymGenres) $("meta-genre").value = rymGenres; // RYM流派始终覆盖自动数据
 
   const metadata = {
     artist: $("meta-artist").value.trim(),
@@ -1489,6 +1585,9 @@ async function runScoring() {
     else correctedAF.duration_seconds = vDur;
   }
 
+  const lyricsForLang = $("lyrics-text").value.trim() || "";
+  const oneLinerLang = /[\u4e00-\u9fff]/.test(lyricsForLang + metadata.title + metadata.artist) ? "zh" : "en";
+
   try {
     const scoreRes = await fetch(`${API}/api/analyze/score`, {
       method: "POST",
@@ -1502,6 +1601,7 @@ async function runScoring() {
         researchData,
         heat: window._heatData,
         ratingScope: $("rating-scope").value || "song",
+        oneLinerLang,
       })
     });
     const scoreData = await scoreRes.json();
@@ -1556,6 +1656,22 @@ async function runScoring() {
 
     busy("score-status", "渲染卡片中…");
 
+    // 重新计算热度（含手动补充的 QQ 评论 / RYM 人数）
+    try {
+      const hsRes = await fetch(`${API}/api/heat`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ heat: window._heatData }),
+      });
+      window._heatScore = await hsRes.json();
+    } catch (_) {}
+
+    // 卡片标签：RYM 手动流派 + 网络交叉验证标签优先，AI 标签兜底
+    const rymGenreList = (rymGenres || "").split(/[,，、]/).map(s => s.trim()).filter(Boolean);
+    const researchTags = (researchData && researchData.aggregate && researchData.aggregate.tags) || [];
+    const cardTags = [...new Set([...rymGenreList, ...researchTags, ...(finalScores.tags || [])])].slice(0, 6);
+    const dataPage = buildDataPage(correctedAF, window._heatScore || null, researchData, finalScores);
+
     const cardRes = await fetch(`${API}/api/card/v4`, {
       method: "POST",
       headers: {"Content-Type": "application/json"},
@@ -1568,7 +1684,9 @@ async function runScoring() {
         scores: finalScores,
         totalScore: finalScores.totalScore,
         oneLiner: finalScores.oneLiner || "",
-        tags: finalScores.tags || [],
+        tags: cardTags,
+        dataPage,
+        heatScore: window._heatScore || null,
         coverUrl: getActiveCoverUrl(),
         summary: (researchData && researchData.aggregate && researchData.aggregate.summary) || "",
         receptionQuotes: (researchData && researchData.aggregate && researchData.aggregate.receptionQuotes) || [],

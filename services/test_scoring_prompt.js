@@ -30,15 +30,16 @@ test("scoring prompt still builds without an evidence pack", () => {
 
 test("calcHeatScore uses album/song comments and collections", () => {
   const h = calcHeatScore({ netease_album_comments: 1200, netease_album_collections: 5000 });
-  assert.equal(h.stars, 4);
-  assert.ok(h.sources.some((s) => s.includes("网易云专辑评论 1.2K")));
-  assert.ok(h.sources.some((s) => s.includes("网易云收藏 5.0K")));
+  assert.equal(h.stars, 3); // 评论 1200 未过 999 门槛+1档，收藏不按评论等价
+  assert.equal(h.domestic.stars, 3);
+  assert.ok(h.domestic.sources.some((s) => s.includes("网易云评论 1.2K")));
+  assert.ok(h.domestic.sources.some((s) => s.includes("网易云收藏 5.0K")));
 });
 
 
 test("calcHeatScore counts NetEase playcount as auxiliary heat", () => {
   const h = calcHeatScore({ netease_playcount: 85 });
-  assert.equal(h.stars, 4);
+  assert.equal(h.stars, 3);
 });
 
 
@@ -46,4 +47,23 @@ test("calcHeatScore returns no-data when nothing is entered (missing ≠ 0)", ()
   const h = calcHeatScore({});
   assert.equal(h.stars, 0);
   assert.equal(h.label, "无数据");
+});
+
+
+test("calcHeatScore splits domestic (★) and international (●) heat", () => {
+  const h = calcHeatScore({
+    netease_song_comments: 316,
+    netease_album_comments: 413,
+    netease_album_collections: 9998,
+    netease_playcount: 85,
+    lastfm_listeners: 98333,
+    youtube_views: 354503,
+    discogs_have: 1561,
+    discogs_want: 697,
+  });
+  assert.equal(h.domestic.stars, 3);
+  assert.match(h.domestic.label, /★/);
+  assert.equal(h.international.stars, 2);
+  assert.match(h.international.label, /●/);
+  assert.ok(h.legend.includes("999"));
 });

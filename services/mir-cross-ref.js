@@ -13,7 +13,7 @@
 import { smartFetch, proxiedFetch } from "./proxy-fetch.js";
 //   4. 缓存: 同一查询 1 小时内不重复请求
 
-import { crossReference, assessKeyReliability } from "./audio-analyzer.js";
+import { crossReference, assessKeyReliability, formatChordSequence } from "./audio-analyzer.js";
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
 
@@ -317,11 +317,12 @@ export async function mirCrossReference(query, localResult, opts = {}) {
   };
 
   // ── 最终推荐值 ──
+  const chordSource = external.find(s => s.chord_sequence);
   const recommended = {
     bpm: crossRef.bpm_consensus || localResult?.bpm || null,
     key: crossRef.key_consensus || localResult?.key || null,
     meter: external.find(s => s.meter)?.meter || localResult?.meter || null,
-    chord_sequence: external.find(s => s.chord_sequence)?.chord_sequence || localResult?.chord_sequence || null,
+    chord_sequence: formatChordSequence(chordSource?.chord_sequence || localResult?.chord_sequence || null),
     chord_summary: external.find(s => s.chord_summary)?.chord_summary || null,
     bpm_confidence: crossRef.confidence_level === "high" ? 0.85 :
                     crossRef.confidence_level === "medium" ? 0.55 : 0.35,
@@ -330,6 +331,12 @@ export async function mirCrossReference(query, localResult, opts = {}) {
     source_count: crossRef.sources.length,
     consensus_level: crossRef.confidence_level,
   };
+  const chord_evidence = chordSource ? {
+    source: chordSource.source,
+    url: chordSource.url || null,
+    raw: chordSource.chord_summary || null,
+    formatted: formatChordSequence(chordSource.chord_sequence),
+  } : null;
 
   const result = {
     success: true,
@@ -340,6 +347,7 @@ export async function mirCrossReference(query, localResult, opts = {}) {
     crossReference: crossRef,
     reliability,
     recommended,
+    chord_evidence,
     elapsed_ms: Date.now() - start,
     _cachedAt: Date.now(),
   };

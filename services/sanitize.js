@@ -2,25 +2,27 @@
 export function sanitizeOneLiner(value) {
   if (typeof value !== "string") return value;
   let text = value;
-  text = text.replace(/'([^']+)'/g, "「$1」");
   text = text.replace(/\s*\[[^\]]+\]\s*/g, " ");
   text = text.replace(/\s+([，。！？、；：])/g, "$1").replace(/[ \t]{2,}/g, " ").trim();
   const bannedTerms = [
     "听者笔记", "听感记录", "用户提到", "用户指出", "用户认为", "用户笔记指出",
     "根据用户", "从用户", "用户没有提供", "用户未提供",
+    "乐评里提到", "乐评提到", "媒体评价", "平台评分显示", "评论区提到", "网友评价",
     "具体歌词文本需以实际发行版本为准", "以实际歌词为准", "以实际版本为准",
     "并非", "已修正为", "已修正", "已删除", "原文为", "以匹配原词", "引用不完整",
   ];
   for (const term of bannedTerms) {
     text = text.replace(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), "g"), "");
   }
-  if (text.length > 20) {
-    const slice = text.slice(0, 20);
+  const isCJK = /[\u4e00-\u9fff]/.test(text);
+  const LIMIT = isCJK ? 20 : 60;
+  if (text.length > LIMIT) {
+    const slice = text.slice(0, LIMIT);
     const lastPunct = Math.max(slice.lastIndexOf("。"), slice.lastIndexOf("，"), slice.lastIndexOf("；"));
-    text = lastPunct > 15 ? slice.slice(0, lastPunct + 1) : slice;
+    text = lastPunct > LIMIT * 0.6 ? slice.slice(0, lastPunct + 1) : slice;
   }
   text = text.replace(/[，、]$/, "");
-  if (text.length > 20 && !/[。！？」]$/.test(text)) {
+  if (text.length > LIMIT && !/[。！？」]$/.test(text)) {
     text += "。";
   }
   return text.trim();
@@ -33,6 +35,7 @@ export function sanitizeScores(scores, lyricsText = "") {
   const bannedTerms = [
     "听者笔记", "听感记录", "用户提到", "用户指出", "用户认为", "用户笔记指出",
     "根据用户", "从用户", "用户没有提供", "用户未提供",
+    "乐评里提到", "乐评提到", "媒体评价", "平台评分显示", "评论区提到", "网友评价",
     "具体歌词文本需以实际发行版本为准", "以实际歌词为准", "以实际版本为准",
     "并非", "已修正为", "已修正", "已删除", "原文为", "以匹配原词", "引用不完整",
   ];
@@ -58,7 +61,6 @@ export function sanitizeScores(scores, lyricsText = "") {
     if (!entry || typeof entry.rationale !== "string") continue;
 
     let text = entry.rationale;
-    text = text.replace(/'([^']+)'/g, "「$1」");
     // 删除面向读者的元数据串（如 [混音:LUFS=-7.6]），只保留自然语言
     text = text.replace(/\s*\[[^\]]+\]\s*/g, " ");
     text = text.replace(/\s+([，。！？、；：])/g, "$1").replace(/[ \t]{2,}/g, " ").replace(/。\s*。/g, "。");
