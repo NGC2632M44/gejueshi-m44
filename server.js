@@ -12,6 +12,7 @@ import { callAI, getEffectiveSettings, maskApiKey, readSettings, writeSettings }
 import { proxiedFetch, smartFetch } from "./services/proxy-fetch.js";
 import { getKeys } from "./services/keys.js";
 import { buildBasicCalibration } from "./services/calibrate.js";
+import { sanitizeScores, sanitizeOneLiner } from "./services/sanitize.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -19,115 +20,6 @@ app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
 const PORT = process.env.PORT || 3001;
-
-// ── 后处理: 清洗 AI 评分输出 ──
-function sanitizeScores(scores, lyricsText = "") {
-  const dims = ["词", "曲", "编", "唱", "混"];
-  const MAX_RATIONALE = 120;
-
-  const bannedTerms = [
-    "听者笔记", "听感记录", "用户提到", "用户指出", "用户认为", "用户笔记指出",
-    "根据用户", "从用户", "用户没有提供", "用户未提供",
-    "具体歌词文本需以实际发行版本为准", "以实际歌词为准", "以实际版本为准",
-    "并非", "已修正为", "已修正", "已删除", "原文为", "以匹配原词", "引用不完整",
-  ];
-
-  // 删除任何形式的编辑元描述——卡片是给读者看的，不是编辑日志
-  const metaPatterns = [
-    /用户(笔记)?(中)?(指出|提到|认为|写道|说|描述|强调|否定|标明|明确写了)/g,
-    /(在原文中|在歌词中|在提供的)(不完整|不准确|无法|未提供|没有提供|缺失)/g,
-    /(因此|故|所以)(仅|只)(保留|描述|记录)/g,
-    /(未提供|没有|无法获取|无法确认)(具体|详细|足够)?(的)?(旋律|和声|编曲|混音|制作|演唱)(信息|数据|细节)/g,
-    /(仅|只)(基于|根据|保留)([^。，]{1,20})(描述|记录|判断)/g,
-    /(具体|详细)?(歌词|旋律|和声|编曲|混音)(文本|信息|数据)?(未提供|不完整|缺失|无法|不可用)/g,
-    /(无法|不能|难以)(进一步|继续)?(核实|验证|确认|分析)/g,
-    /(但|然而|不过)([^。，]{0,10})(未提供|不完整|无法|不能)/g,
-  ];
-
-  const lyricsClean = lyricsText
-    ? lyricsText.replace(/[，。！？、；：""''「」『』（）\s\n\r]+/g, " ").toLowerCase().trim()
-    : "";
-
-  for (const dim of dims) {
-    const entry = scores[dim];
-    if (!entry || typeof entry.rationale !== "string") continue;
-
-    let text = entry.rationale;
-    text = text.replace(/'([^']+)'/g, "「$1」");
-    for (const term of bannedTerms) {
-      text = text.replace(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), "g"), "");
-    }
-    for (const pat of metaPatterns) {
-      text = text.replace(pat, "");
-    }
-
-    // 歌词引用核验：删除在原文中找不到的「...」引用
-    if (lyricsClean) {
-      text = text.replace(/「([^」]+)」/g, (match, quote) => {
-        const q = quote.replace(/[，。！？、；：\s]+/g, " ").toLowerCase().trim();
-        if (q.length < 4) return match;
-        if (lyricsClean.includes(q)) return match;
-        // 尝试缩短到60%再匹配
-        const half = Math.floor(q.length * 0.6);
-        const sq = q.slice(0, half);
-        if (sq.length >= 4 && lyricsClean.includes(sq)) return "";
-        return ""; // 找不到 → 删除
-      });
-    }
-
-    if (text.length > MAX_RATIONALE) {
-      const slice = text.slice(0, MAX_RATIONALE);
-      // 优先找句号，其次逗号/分号
-      let cut = slice.lastIndexOf("。");
-      if (cut < MAX_RATIONALE * 0.5) {
-        cut = Math.max(slice.lastIndexOf("，"), slice.lastIndexOf("；"));
-      }
-      if (cut > MAX_RATIONALE * 0.5) {
-        text = slice.slice(0, cut + 1);
-        // 逗号结尾 → 换成句号；如果逗号前不到5字 → 再往前找句号
-        if (text.endsWith("，") || text.endsWith("；")) {
-          const beforeComma = text.slice(text.lastIndexOf("。") + 1).replace(/[，；、]/g, "");
-          if (beforeComma.length < 8) {
-            const prevPeriod = slice.lastIndexOf("。");
-            if (prevPeriod > 20) text = slice.slice(0, prevPeriod + 1);
-          } else {
-            text = text.slice(0, -1) + "。";
-          }
-        }
-      } else {
-        text = slice;
-      }
-    }
-    text = text.replace(/[，、]$/, "。");
-    entry.rationale = text;
-  }
-
-  // oneLiner: 去内部用语 + 单引号 + 截断 + 禁止逗号结尾
-  if (typeof scores.oneLiner === "string") {
-    scores.oneLiner = scores.oneLiner.replace(/'([^']+)'/g, "「$1」");
-    for (const term of bannedTerms) {
-      scores.oneLiner = scores.oneLiner.replace(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), "g"), "");
-    }
-    if (scores.oneLiner.length > 20) {
-      const slice = scores.oneLiner.slice(0, 20);
-      const lastPunct = Math.max(slice.lastIndexOf("。"), slice.lastIndexOf("，"), slice.lastIndexOf("；"));
-      scores.oneLiner = lastPunct > 15 ? slice.slice(0, lastPunct + 1) : slice;
-    }
-    // oneLiner 不能以逗号结尾——改成句号或直接去掉
-    scores.oneLiner = scores.oneLiner.replace(/[，、]$/, "");
-    // 超过 20 字还没句号 → 不自然，加句号收尾
-    if (scores.oneLiner.length > 20 && !/[。！？」]$/.test(scores.oneLiner)) {
-      scores.oneLiner += "。";
-    }
-  }
-
-  // tags: 剔除非英文
-  if (Array.isArray(scores.tags)) {
-    scores.tags = scores.tags.filter(t =>
-      !/^(female|male|guitar|bass|drum|synth|piano|violin|distortion|reverb|delay|compressor|loop|riff)/i.test(t)
-    );
-  }
-}
 
 // ============================================================
 // 静态文件服务
@@ -264,7 +156,8 @@ app.post("/api/analyze/score", async (req, res) => {
       ratings,
       heat,
       req.body.lyrics || "",
-      researchData
+      researchData,
+      req.body.ratingScope || "song"
     );
 
     const response = await callAI({
@@ -355,6 +248,8 @@ app.post("/api/card/v3", (req, res) => {
   if (!cardData || !cardData.scores) {
     return res.status(400).json({ error: "请提供评分数据 cardData.scores" });
   }
+  sanitizeScores(cardData.scores);
+  if (typeof cardData.oneLiner === "string") cardData.oneLiner = sanitizeOneLiner(cardData.oneLiner);
   const templatePath = path.join(__dirname, "public", "card-v3.html");
   const template = fs.readFileSync(templatePath, "utf-8");
   const dataScript = `<script>window.__CARD_DATA__ = ${JSON.stringify(cardData)};</script>`;
@@ -369,6 +264,8 @@ app.post("/api/card/v4", async (req, res) => {
   if (!cardData || !cardData.scores) {
     return res.status(400).json({ error: "请提供评分数据 cardData.scores" });
   }
+  sanitizeScores(cardData.scores);
+  if (typeof cardData.oneLiner === "string") cardData.oneLiner = sanitizeOneLiner(cardData.oneLiner);
 
   // 计算热度星级
   const heatData = cardData.heat || {};
@@ -950,6 +847,7 @@ ${userGroundTruth || "（无）"}
         scores.oneLiner = scores.oneLiner.replace(/[，、]$/, "");
       }
       if (verified.tags?.length) scores.tags = verified.tags;
+      sanitizeScores(scores, lyrics || "");
       console.log(`   🔍 自查完成: ${(verified.corrections || []).length} 处修正`);
       res.json({ success: true, verified: { ...verified, scores } });
     } else {
@@ -969,10 +867,12 @@ app.get("/api/lyrics", async (req, res) => {
   const q = (req.query.q || "").trim();
   if (!q) return res.status(400).json({ error: "请输入歌曲名+艺术家" });
   const songQ = (req.query.song || "").trim() || q;
+  const attempts = [];
   try {
     const songSearch = await searchNetease(songQ, "song");
     if (!songSearch?.results?.length) {
-      return res.json({ success: false, lyrics: null, hint: "未找到歌曲" });
+      attempts.push({ name: "网易云定位", status: "error", detail: "未找到歌曲" });
+      return res.json({ success: false, lyrics: null, hint: "未找到歌曲", attempts });
     }
     const song = songSearch.results[0];
     const firstArtist = (song.artists || "").split("/")[0] || "";
@@ -994,15 +894,22 @@ app.get("/api/lyrics", async (req, res) => {
             && (norm(x.trackName || "").includes(norm(song.name)) || norm(song.name).includes(norm(x.trackName || "")))
         ) || null;
         if (match?.plainLyrics) {
+          attempts.push({ name: "LRCLIB", status: "ok", detail: match.trackName || song.name });
           return res.json({
             success: true,
             lyrics: match.plainLyrics.trim(),
             source: "LRCLIB",
+            attempts,
             song: { id: song.id, name: match.trackName || song.name, artists: match.artistName || song.artists },
           });
         }
+        attempts.push({ name: "LRCLIB", status: "no_data", detail: "接口 200 但无匹配歌词" });
+      } else {
+        attempts.push({ name: "LRCLIB", status: "error", detail: "HTTP " + lrclibRes.status });
       }
-    } catch (_) {}
+    } catch (e) {
+      attempts.push({ name: "LRCLIB", status: "error", detail: e.message });
+    }
     // 2) Genius 页面解析（先用 API 精确定位歌曲页，再抓歌词）
     try {
       const keys = getKeys();
@@ -1010,15 +917,22 @@ app.get("/api/lyrics", async (req, res) => {
       if (g?.url) {
         const lyrics = await fetchGeniusLyrics(g.url);
         if (lyrics) {
+          attempts.push({ name: "Genius", status: "ok", detail: g.title });
           return res.json({
             success: true,
             lyrics,
             source: "Genius",
+            attempts,
             song: { id: g.id, name: g.title, artists: g.artist },
           });
         }
+        attempts.push({ name: "Genius", status: "no_data", detail: "页面已定位但歌词为空" });
+      } else {
+        attempts.push({ name: "Genius", status: "no_data", detail: "未定位到歌曲页" });
       }
-    } catch (_) {}
+    } catch (e) {
+      attempts.push({ name: "Genius", status: "error", detail: e.message });
+    }
     // 3) 网易云歌词兜底
     const { default: fetchWithProxy } = await import("node-fetch");
     const { HttpsProxyAgent } = await import("https-proxy-agent");
@@ -1029,19 +943,22 @@ app.get("/api/lyrics", async (req, res) => {
       agent, signal: AbortSignal.timeout(8000),
     });
     if (!lrcRes.ok) {
-      return res.json({ success: false, lyrics: null, hint: "歌词接口返回 " + lrcRes.status });
+      attempts.push({ name: "网易云歌词", status: "error", detail: "HTTP " + lrcRes.status });
+      return res.json({ success: false, lyrics: null, hint: "歌词接口返回 " + lrcRes.status, attempts });
     }
     const lrcData = await lrcRes.json();
     const rawLyrics = lrcData.lrc?.lyrics || lrcData.tlyric?.lyrics || "";
     const lyrics = rawLyrics.replace(/\[[\d:.]+\]/g, "").trim();
+    attempts.push({ name: "网易云歌词", status: lyrics ? "ok" : "no_data", detail: lyrics ? song.name : "无歌词" });
     res.json({
       success: true,
       lyrics: lyrics || null,
       source: "NetEase",
+      attempts,
       song: { id: song.id, name: song.name, artists: song.artists },
     });
   } catch (e) {
-    res.json({ success: false, lyrics: null, error: e.message });
+    res.json({ success: false, lyrics: null, error: e.message, attempts });
   }
 });
 
@@ -1152,7 +1069,9 @@ app.post("/api/album/card", async (req, res) => {
   }
 
   try {
-    const cardData = buildAlbumCardData(albumMeta, tracks, hitTracks || []);
+  const cardData = buildAlbumCardData(albumMeta, tracks, hitTracks || []);
+  if (cardData.scores) sanitizeScores(cardData.scores);
+  if (typeof cardData.oneLiner === "string") cardData.oneLiner = sanitizeOneLiner(cardData.oneLiner);
 
     // 添加封面和热度
     if (coverUrl) {

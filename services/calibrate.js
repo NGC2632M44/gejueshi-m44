@@ -131,5 +131,64 @@ export function buildBasicCalibration({ query, local = null, neteaseSong = null,
   } else if (duration) {
     durationCheck = { local_seconds: null, recommended_seconds: duration.value, match: null, sources: ["Last.fm", "NetEase"].filter((_, i) => durations[i] != null) };
   }
-  return { query, title, artist, album, year, label, genre, duration, durationCheck };
+  const sourceStatus = [
+    {
+      name: "网易云",
+      status: (neteaseSong?.name || neteaseAlbum?.name) ? "ok" : "no_data",
+      detail: neteaseSong?.name || neteaseAlbum?.name || "未定位",
+      fields: ["歌名", "艺人", "专辑", "年份", "时长"].filter((_, i) =>
+        i === 0 ? !!neteaseSong?.name
+        : i === 1 ? !!neteaseSong?.artists
+        : i === 2 ? !!(neteaseSong?.album || neteaseAlbum?.name)
+        : i === 3 ? !!neteaseAlbum?.publishTime
+        : !!neteaseSong?.duration_ms
+      ),
+    },
+    {
+      name: "Last.fm",
+      status: lastfmTrack?.name ? "ok" : "no_data",
+      detail: lastfmTrack?.name || "未定位",
+      fields: ["歌名", "艺人", "专辑", "时长"].filter((_, i) =>
+        i === 0 ? !!lastfmTrack?.name
+        : i === 1 ? !!lastfmTrack?.artist
+        : i === 2 ? !!lastfmTrack?.album
+        : !!lastfmTrack?.duration
+      ),
+    },
+    {
+      name: "Genius",
+      status: genius?.title ? "ok" : "no_data",
+      detail: genius?.title || "未定位",
+      fields: ["歌名", "艺人"].filter((_, i) => i === 0 ? !!genius?.title : !!genius?.artist),
+    },
+    {
+      name: "YouTube",
+      status: youtube?.title ? "ok" : "no_data",
+      detail: youtube?.title || "未定位",
+      fields: ["歌名", "艺人"].filter((_, i) => i === 0 ? !!youtube?.title : !!youtube?.channel),
+    },
+    {
+      name: "MusicBrainz/研究聚合",
+      status: (albumAgg?.title || albumAgg?.date || albumAgg?.labels?.length) ? "ok" : "no_data",
+      detail: albumAgg?.title || "未定位",
+      fields: ["专辑", "年份", "厂牌", "流派"].filter((_, i) =>
+        i === 0 ? !!albumAgg?.title
+        : i === 1 ? !!albumAgg?.date
+        : i === 2 ? !!(albumAgg?.labels?.length)
+        : !!(albumAgg?.genre || albumAgg?.genres?.length || albumAgg?.tags?.length)
+      ),
+    },
+    {
+      name: "Discogs",
+      status: (discogsTop?.title || discogsTop?.year != null) ? "ok" : "no_data",
+      detail: discogsTop?.title || "未定位",
+      fields: ["年份", "厂牌", "流派"].filter((_, i) =>
+        i === 0 ? discogsTop?.year != null
+        : i === 1 ? !!(discogsTop?.labels?.length || discogsTop?.label)
+        : !!(discogsTop?.genres?.length || discogsTop?.style)
+      ),
+    },
+  ];
+
+  return { query, title, artist, album, year, label, genre, duration, durationCheck, sourceStatus };
 }

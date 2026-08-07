@@ -307,6 +307,7 @@ details.manual .tip{font:11px/1.7 var(--f-sans);color:var(--ink-3);margin:10px 0
               <button class="btn ghost" id="btn-fetch-lyrics" onclick="fetchLyrics()">自动提取歌词</button>
               <span class="inline-status" id="lyrics-status"></span>
             </div>
+            <div id="lyrics-source-row" style="display:none"></div>
             <textarea id="lyrics-text" rows="6" placeholder="粘贴歌词原文，或点击"自动提取歌词"从网易云获取" oninput="saveDraft();onLyricsInput()" style="margin-top:10px"></textarea>
           </div>
         </details>
@@ -346,11 +347,13 @@ details.manual .tip{font:11px/1.7 var(--f-sans);color:var(--ink-3);margin:10px 0
               <div class="field"><label>RYM 评分 /5</label><input type="text" id="plat-rym" placeholder="3.88"></div>
               <div class="field"><label>评分人数 <a href="#" onclick="openPlatformSearch('https://rateyourmusic.com/search?searchterm=')">↗</a></label><input type="text" id="plat-rym-count" placeholder="1500"></div>
               <div class="field"><label>RYM 流派</label><input type="text" id="plat-rym-genres" placeholder="Indie Rock, Garage Rock"></div>
+              <div class="field"><label>RYM 对象</label><select id="plat-rym-scope" onchange="saveDraft()"><option value="song">单曲</option><option value="album">专辑</option></select></div>
             </div>
             <div class="row">
               <div class="field"><label>AOTY 用户 /100 <a href="#" onclick="openPlatformSearch('https://www.albumoftheyear.org/search.php?q=')">↗</a></label><input type="text" id="plat-aoty" placeholder="85"></div>
               <div class="field"><label>AOTY 乐评 /100</label><input type="text" id="plat-aoty-critic" placeholder="76"></div>
               <div class="field"><label>Discogs 评分 /5 <a href="#" onclick="openPlatformSearch('https://www.discogs.com/search/?q=')">↗</a></label><input type="text" id="plat-discogs" placeholder="4.2"></div>
+              <div class="field"><label>AOTY 对象</label><select id="plat-aoty-scope" onchange="saveDraft()"><option value="album">专辑</option><option value="song">单曲</option></select></div>
             </div>
             <div class="row">
               <div class="field"><label>Pitchfork /10 <a href="#" onclick="openPlatformSearch('https://pitchfork.com/search/?query=')">↗</a></label><input type="text" id="plat-p4k" placeholder="7.5"></div>
@@ -425,6 +428,7 @@ details.manual .tip{font:11px/1.7 var(--f-sans);color:var(--ink-3);margin:10px 0
           <div class="field"><label>所属专辑（留空=未分组）</label><input type="text" id="meta-album" placeholder="用于专辑归类与卡片存档" oninput="saveDraft()"></div>
         </div>
         <div class="btn-row">
+          <div class="field" style="flex:0 0 auto"><label>评分对象</label><select id="rating-scope" onchange="saveDraft()"><option value="song">单曲（专辑分仅作背景）</option><option value="album">专辑（专辑分作锚点）</option></select></div>
           <button class="btn" id="btn-score" onclick="runScoring()">生成评分 &amp; 卡片</button>
           <span class="inline-status" id="score-status"></span>
         </div>
@@ -496,14 +500,15 @@ const DRAFT_KEY = "m44-draft-v5";
 const DRAFT_FIELDS = [
   "audio-path", "research-query",
   "online-song", "online-artist", "online-album",
-  "plat-rym", "plat-rym-count", "plat-rym-genres",
-  "plat-aoty", "plat-aoty-critic", "plat-discogs",
+  "plat-rym", "plat-rym-count", "plat-rym-genres", "plat-rym-scope",
+  "plat-aoty", "plat-aoty-critic", "plat-discogs", "plat-aoty-scope",
   "plat-p4k", "plat-mc", "plat-nme", "plat-guardian", "plat-clash", "plat-dork",
   "plat-qq", "plat-qq-comments",
   "plat-spotify", "plat-apple", "plat-youtube",
   "note-arrangement", "note-performance", "note-production",
   "note-highlight", "note-similar", "note-lyrics",
   "meta-artist", "meta-title", "meta-year", "meta-label", "meta-genre", "meta-album",
+  "rating-scope",
   "cover-url", "lyrics-text", "v-bpm", "v-key", "v-duration",
   "v-songbpm-url",
 ];
@@ -763,6 +768,32 @@ async function runAnalysis() {
   btn.disabled = false;
 }
 
+const SOURCE_STATUS_TEXT = {
+  ok: "✅ 可用", no_data: "○ 无数据", no_config: "△ 未配置",
+  error: "✕ 失败", retired: "⊘ 已下线", found: "○ 已定位", no_match: "○ 未匹配",
+};
+
+function buildSourceChips(sources) {
+  const row = document.createElement("div");
+  row.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin:6px 0;align-items:center";
+  const label = document.createElement("span");
+  label.style.cssText = "font:10px var(--f-mono);color:var(--ink-3)";
+  label.textContent = "数据源:";
+  row.appendChild(label);
+  for (const s of sources || []) {
+    const chip = document.createElement("span");
+    const txt = SOURCE_STATUS_TEXT[s.status] || s.status;
+    const color = (s.status === "ok" || s.status === "found") ? "#4caf7d"
+      : s.status === "error" ? "var(--accent)"
+      : s.status === "no_config" ? "#c9a24d" : "var(--ink-3)";
+    chip.textContent = `${s.name} ${txt}`;
+    chip.style.cssText = `font:9px var(--f-mono);padding:2px 8px;border:1px solid ${color};color:${color};border-radius:99px;letter-spacing:.5px`;
+    if (s.detail) chip.title = s.detail;
+    row.appendChild(chip);
+  }
+  return row;
+}
+
 function showMIRPanel(mirData) {
   const panel = $("verify-panel");
   const ref = mirData.crossReference || {};
@@ -781,28 +812,9 @@ function showMIRPanel(mirData) {
   document.querySelectorAll("#verify-panel .mir-dynamic").forEach(el => el.remove());
 
   // 逐源状态
-  const sourceRow = document.createElement("div");
-  sourceRow.className = "mir-dynamic";
-  sourceRow.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin:8px 0;align-items:center";
-  const srcLabel = document.createElement("span");
-  srcLabel.style.cssText = "font:10px var(--f-mono);color:var(--ink-3)";
-  srcLabel.textContent = "数据源:";
-  sourceRow.appendChild(srcLabel);
-  const statusText = {
-    ok: "✅ 可用", no_data: "○ 无数据", no_config: "△ 未配置",
-    error: "✕ 失败", retired: "⊘ 已下线", found: "○ 已定位", no_match: "○ 未匹配",
-  };
-  for (const s of sources) {
-    const chip = document.createElement("span");
-    const txt = statusText[s.status] || s.status;
-    const color = s.status === "ok" ? "#4caf7d"
-      : s.status === "error" ? "var(--accent)"
-      : s.status === "no_config" ? "#c9a24d" : "var(--ink-3)";
-    chip.textContent = `${s.name} ${txt}`;
-    chip.style.cssText = `font:9px var(--f-mono);padding:2px 8px;border:1px solid ${color};color:${color};border-radius:99px;letter-spacing:.5px`;
-    sourceRow.appendChild(chip);
-  }
-  panel.insertBefore(sourceRow, panel.querySelector(".row"));
+  const srcRow = buildSourceChips(sources);
+  srcRow.classList.add("mir-dynamic");
+  panel.insertBefore(srcRow, panel.querySelector(".row"));
 
   // 时长校验（MusicBrainz 录音时长 vs 本地原文时长）
   const durChk = mirData.duration_check;
@@ -978,6 +990,14 @@ async function fetchLyrics() {
     const songQ = [$("online-song").value.trim(), $("online-artist").value.trim()].filter(Boolean).join(" ") || q.trim();
     const res = await fetch(`${API}/api/lyrics?q=${encodeURIComponent(q.trim())}&song=${encodeURIComponent(songQ)}`);
     const data = await res.json();
+    const srcRowEl = $("lyrics-source-row");
+    srcRowEl.innerHTML = "";
+    if (data.attempts && data.attempts.length) {
+      srcRowEl.appendChild(buildSourceChips(data.attempts));
+      srcRowEl.style.display = "flex";
+    } else {
+      srcRowEl.style.display = "none";
+    }
     if (data.success && data.lyrics) {
       $("lyrics-text").value = data.lyrics;
       saveDraft();
@@ -1009,6 +1029,33 @@ function onLyricsInput() {
 // ============ Step 2: 数据研究 ============
 function badge(label, score, max, accent){
   return `<div class="badge${accent ? " accent" : ""}"><div class="s">${score}<em>/${max}</em></div><div class="k">${label}</div></div>`;
+}
+
+function renderStep2Sources(researchData, cn) {
+  const strip = $("rating-strip");
+  if (!strip) return;
+  const rd = researchData || {};
+  const errs = (rd.errors || []).join(" | ");
+  const errOf = (name) => errs.includes(name);
+  const srcs = [];
+  const add = (name, ok, failed, statusOverride, detail) => srcs.push({
+    name, status: ok ? (statusOverride || "ok") : (failed ? "error" : "no_data"), detail: ok ? (detail || "") : (failed ? errs : ""),
+  });
+  const adm = rd.anyDecentMusic;
+  add("Wikipedia", !!rd.wikipedia?.title, errOf("Wikipedia"), null, rd.wikipedia?.title);
+  add("MusicBrainz", !!rd.musicbrainz?.title, errOf("MusicBrainz"), "found", rd.musicbrainz?.title);
+  add("iTunes", !!rd.itunes?.title, errOf("iTunes"), null, rd.itunes?.title);
+  add("Last.fm", !!(rd.lastfm?.title || cn?.lastfmTrack?.name), errOf("Last.fm"), null, rd.lastfm?.title || cn?.lastfmTrack?.name);
+  add("Discogs", !!(rd.discogs?.results?.length), errOf("Discogs"), null, rd.discogs?.results?.[0]?.title);
+  add("AnyDecentMusic", !!(adm && (adm.overall != null || (adm.individualScores || []).length)), errOf("AnyDecentMusic"), null, adm?.overallDisplay || "");
+  add("网易云", !!(cn?.netease || cn?.neteaseSong), false, null, cn?.netease?.name || cn?.neteaseSong?.name);
+  add("YouTube", !!(cn?.youtube?.views != null), false, null, cn?.youtube?.title);
+  add("Genius", !!(cn?.genius?.url), false, null, cn?.genius?.title);
+  strip.insertBefore(buildSourceChips(srcs), strip.firstChild);
+  if (rd.calibration?.sourceStatus?.length) {
+    const calChips = rd.calibration.sourceStatus.map(x => ({ ...x, name: "校准·" + x.name, detail: (x.detail || "") + " [" + (x.fields || []).join("/") + "]" }));
+    strip.insertBefore(buildSourceChips(calChips), strip.firstChild);
+  }
 }
 
 async function runResearch() {
@@ -1057,7 +1104,7 @@ async function runResearch() {
     // 封面预览
     window._originalCoverUrl = agg.artwork || null;
     window._manualCoverUrl = null;
-    updateCoverDisplay(agg.artwork, agg);
+    updateCoverDisplay(agg.artwork, agg, "研究聚合（" + (agg.sources || []).join("/") + "）");
 
     // 自动填充元数据
     if (agg.artist && !$("meta-artist").value) $("meta-artist").value = agg.artist;
@@ -1107,6 +1154,7 @@ async function runResearch() {
       const cnQ = [$("online-song").value.trim(), $("online-artist").value.trim()].filter(Boolean).join(" ") || query;
       const cnRes = await fetch(`${API}/api/research/chinese?q=${encodeURIComponent(query)}&song=${encodeURIComponent(cnQ)}`);
       const cn = await cnRes.json();
+      window._researchCn = cn;
       const neAlbum = cn.netease;
       const neSong = cn.neteaseSong;
 
@@ -1168,7 +1216,7 @@ async function runResearch() {
       const cnArtwork = (neAlbum && neAlbum.picUrl) || null;
       if (cnArtwork) {
         window._originalCoverUrl = cnArtwork;
-        updateCoverDisplay(cnArtwork, { ...agg, title: neAlbum.name || agg.title, artist: neAlbum.artist || agg.artist, labels: agg.labels || [] });
+        updateCoverDisplay(cnArtwork, { ...agg, title: neAlbum.name || agg.title, artist: neAlbum.artist || agg.artist, labels: agg.labels || [] }, "网易云主专辑");
         console.log("🖼️ 封面来自网易云主专辑");
       }
 
@@ -1212,6 +1260,7 @@ async function runResearch() {
       } catch (calErr) { console.log("calibration failed:", calErr.message); }
     } catch (e) { console.log("Chinese platform fetch failed:", e.message); }
 
+    renderStep2Sources(researchData, window._researchCn || {});
     setStatus("research-status", "✓ 研究完成", "ok");
     toast("数据研究完成", "ok");
     markStep(2, "done");
@@ -1274,11 +1323,12 @@ function guessSearchQueryFromFilename(name) {
     .trim();
 }
 
-function updateCoverDisplay(artworkUrl, agg) {
+function updateCoverDisplay(artworkUrl, agg, sourceLabel) {
   if (artworkUrl) {
     $("cover-preview").style.display = "flex";
     $("cover-img").src = proxiedCoverUrl(artworkUrl);
-    $("cover-info").innerHTML = `<b>${escapeHTML((agg && agg.title) || "")}</b><br>${escapeHTML((agg && agg.artist) || "")} · ${escapeHTML(((agg && agg.labels) || [])[0] || "")}<br>封面将用于卡片背景`;
+    const src = sourceLabel || "自动封面";
+    $("cover-info").innerHTML = `<b>${escapeHTML((agg && agg.title) || "")}</b><br>${escapeHTML((agg && agg.artist) || "")} · ${escapeHTML(((agg && agg.labels) || [])[0] || "")}<br>封面来源: ${escapeHTML(src)}`;
   } else {
     $("cover-preview").style.display = "none";
   }
@@ -1345,6 +1395,7 @@ function resetManualCover() {
   if (window._originalCoverUrl) {
     $("cover-img").src = proxiedCoverUrl(window._originalCoverUrl);
     $("cover-preview").style.display = "flex";
+    $("cover-info").innerHTML = ($("cover-info").innerHTML || "").replace(/封面来源:[^<]*/, "封面来源: 自动封面");
   } else {
     $("cover-preview").style.display = "none";
   }
@@ -1398,8 +1449,8 @@ async function runScoring() {
   const appleVal = parseInt($("plat-apple").value) || null;
   const youtubeVal = parseInt($("plat-youtube").value) || null;
 
-  if (rymVal) pr.rym = {score: rymVal, max: 5, rating_count: rymCount};
-  if (aotyVal) pr.aoty = {score: aotyVal, max: 100};
+  if (rymVal) pr.rym = {score: rymVal, max: 5, rating_count: rymCount, scope: $("plat-rym-scope").value || "song"};
+  if (aotyVal) pr.aoty = {score: aotyVal, max: 100, scope: $("plat-aoty-scope").value || "album"};
   if (aotyCritic) pr.aoty_critic = {score: aotyCritic, max: 100};
   if (discogsVal) pr.discogs = {score: discogsVal, max: 5};
   if (p4kVal) pr.pitchfork = {score: p4kVal, max: 10};
@@ -1450,6 +1501,7 @@ async function runScoring() {
         platformRatings: Object.keys(pr).length > 0 ? pr : undefined,
         researchData,
         heat: window._heatData,
+        ratingScope: $("rating-scope").value || "song",
       })
     });
     const scoreData = await scoreRes.json();

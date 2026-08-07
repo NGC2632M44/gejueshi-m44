@@ -30,3 +30,51 @@ test("scoring prompt omits calibration block when absent", () => {
   const prompt = buildScoringPrompt({ bpm: 128.2 }, "", {}, null, null, "", null);
   assert.doesNotMatch(prompt, /基础信息校准/);
 });
+
+
+test("song scope separates song-level and album-level ratings", () => {
+  const prompt = buildScoringPrompt(
+    { bpm: 128.2 },
+    "",
+    {},
+    {
+      rym: { score: 4.1, max: 5, scope: "song" },
+      pitchfork: { score: 7.5, max: 10 },
+      aoty: { score: 82, max: 100, scope: "album" },
+    },
+    null,
+    "",
+    null,
+    "song"
+  );
+  assert.match(prompt, /单曲级评分参考/);
+  assert.match(prompt, /专辑级评分参考/);
+  assert.match(prompt, /不直接决定单曲得分/);
+  assert.match(prompt, /禁止用专辑分推断/);
+  assert.doesNotMatch(prompt, /五维总分不应低于70/);
+});
+
+
+test("album scope keeps album ratings as anchors", () => {
+  const prompt = buildScoringPrompt(
+    { bpm: 128.2 },
+    "",
+    {},
+    { aoty: { score: 82, max: 100, scope: "album" }, rym: { score: 4.1, max: 5, scope: "song" } },
+    null,
+    "",
+    null,
+    "album"
+  );
+  assert.match(prompt, /各平台评分参考/);
+  assert.match(prompt, /五维总分不应低于70/);
+  assert.match(prompt, /专辑赏析/);
+});
+
+
+test("scoring prompt bans bracket evidence refs and asks for longer rationale", () => {
+  const prompt = buildScoringPrompt({ bpm: 128.2, evidence: { 混音: { integrated_lufs: -7.6 } } });
+  assert.match(prompt, /禁止在 rationale 中出现任何 \[键:值\]/);
+  assert.match(prompt, /150-220/);
+  assert.doesNotMatch(prompt, /必须引用对应证据键/);
+});

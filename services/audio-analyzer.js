@@ -255,7 +255,7 @@ export function generateListeningGuide(audioFeatures) {
  * @param {Object} albumMetadata
  * @param {Object} platformRatings - { pitchfork, rym, aoty, qq, netease, wikipedia }
  */
-export function buildScoringPrompt(audioFeatures, listeningAnswers = "", albumMetadata = {}, platformRatings = null, heatData = null, lyrics = "", researchData = null) {
+export function buildScoringPrompt(audioFeatures, listeningAnswers = "", albumMetadata = {}, platformRatings = null, heatData = null, lyrics = "", researchData = null, ratingScope = "song") {
   const {
     bpm,
     key,
@@ -269,6 +269,7 @@ export function buildScoringPrompt(audioFeatures, listeningAnswers = "", albumMe
   } = audioFeatures;
 
   const prompts = [];
+  const isSongScope = ratingScope === "song";
 
   prompts.push("# 音乐分析任务：五维评分\n");
   prompts.push("你是一个认真听歌的音乐爱好者。基于音频特征、聆听反馈、平台评分，分享你对这首歌在词曲编唱混五个维度的感受。");
@@ -316,7 +317,7 @@ export function buildScoringPrompt(audioFeatures, listeningAnswers = "", albumMe
   if (evidence && Object.keys(evidence).length > 0) {
     prompts.push("## Step1 五维证据包（只当证据，不下结论）");
     prompts.push(JSON.stringify(evidence, null, 2));
-    prompts.push("规则：每个维度的 rationale 必须引用对应证据键（如 [混音:LUFS=-8.9]），或注明“证据不足，基于平台评分/听感推断”。禁止把数值本身说成好/坏结论。");
+    prompts.push("规则：把证据转述成自然听感语言（如写“响度偏大、动态偏平”而不是 [混音:LUFS=-7.6]）；禁止在 rationale 中出现任何 [键:值] 形式的字段串、技术字段名或括号标注；证据不足必须明说“基于听感/平台评分推断”。禁止把数值本身说成好/坏结论。");
     prompts.push("");
   }
   prompts.push("");
@@ -365,63 +366,96 @@ export function buildScoringPrompt(audioFeatures, listeningAnswers = "", albumMe
     prompts.push("");
   }
 
-  // ── 平台评分校准（核心新增）──
+  // ── 平台评分参考（按单曲/专辑拆分，避免专辑分绑架单曲分）──
   if (platformRatings && Object.keys(platformRatings).length > 0) {
-    prompts.push("## 各平台评分参考（校准锚点）");
-    prompts.push("以下是真实世界的评分数据。你的评分应该与这些数据有合理的相关性——");
-    prompts.push("可以有自己的判断（高出或低出1-3分），但不能完全无视共识。");
-    prompts.push("");
+    const lineFor = (key) => {
+      const p = platformRatings[key];
+      if (p == null) return null;
+      const scopeTag = p.scope === "song" ? "（单曲级）" : "（专辑级）";
+      switch (key) {
+        case "rym": {
+          const pct = p.max ? Math.round(p.score / p.max * 100) : p.score;
+          return `- **RYM (RateYourMusic)**: ${p.score}/${p.max || 5} (${pct}%) — 硬核乐迷社区评分，偏保守/严苛${scopeTag}`;
+        }
+        case "aoty": {
+          const pct = p.max ? Math.round(p.score / p.max * 100) : p.score;
+          return `- **AOTY (AlbumOfTheYear)**: ${p.score}/${p.max || 100} (${pct}%) — 聚合专业乐评机构评分${scopeTag}`;
+        }
+        case "pitchfork":
+          return `- **Pitchfork**: ${p.score}/${p.max || 10} — 最具影响力的独立乐评机构${scopeTag}`;
+        case "qq":
+          return `- **QQ音乐**: ${p.score}/${p.max || 10} — 华语主流听众评分${scopeTag}`;
+        case "spotify":
+          return `- **Spotify 热度**: ${p.score}/${p.max || 100} — 流媒体热度参考${scopeTag}`;
+        case "apple":
+          return `- **Apple Music**: ${p.score}/${p.max || 100} — 流媒体热度参考${scopeTag}`;
+        case "youtube":
+          return `- **YouTube 播放**: ${formatNumber(p.score)} — 大众触达参考${scopeTag}`;
+        case "netease":
+          return `- **网易云音乐**: ${p.score}/${p.max || 10} — 华语独立/小众听众评分${scopeTag}`;
+        case "wikipedia":
+          return `- **Wikipedia乐评摘录**: ${p}`;
+        default:
+          return p && typeof p === "object" && p.score != null
+            ? `- **${key}**: ${p.score}/${p.max || "?"}${scopeTag}`
+            : null;
+      }
+    };
+    const allKeys = Object.keys(platformRatings).filter(k => platformRatings[k] != null);
+    const songKeys = allKeys.filter(k => platformRatings[k]?.scope === "song");
+    const albumKeys = allKeys.filter(k => platformRatings[k]?.scope !== "song");
+    const songLines = songKeys.map(lineFor).filter(Boolean);
+    const albumLines = albumKeys.map(lineFor).filter(Boolean);
 
-    if (platformRatings.rym !== undefined && platformRatings.rym !== null) {
-      const rym = platformRatings.rym;
-      const pct = rym.max ? Math.round(rym.score / rym.max * 100) : rym.score;
-      prompts.push(`- **RYM (RateYourMusic)**: ${rym.score}/${rym.max || 5} (${pct}%) — 硬核乐迷社区评分，偏保守/严苛`);
+    if (isSongScope) {
+      if (songLines.length) {
+        prompts.push("## 单曲级评分参考（直接支撑）");
+        prompts.push("以下数据直接反映这首单曲（而非整张专辑）：");
+        prompts.push("");
+        prompts.push(songLines.join("\n"));
+        prompts.push("");
+      }
+      if (albumLines.length) {
+        prompts.push("## 专辑级评分参考（背景支撑，不直接决定单曲得分）");
+        prompts.push("以下评分针对整张专辑，只说明这张专辑的整体水准。单曲可以明显高于或低于专辑均值——");
+        prompts.push("词/唱维度禁止用专辑分推断，曲/编/混也只能把专辑制作水准当作参考背景。");
+        prompts.push("");
+        prompts.push(albumLines.join("\n"));
+        prompts.push("");
+      }
+      prompts.push("**校准规则（单曲赏析）**:");
+      prompts.push("- 单曲级数据（单曲评分/评论/播放/热度）优先于专辑级评分；");
+      prompts.push("- 专辑分是背景：好专辑里可以有平庸单曲，平庸专辑里也可以有惊艳单曲；");
+      prompts.push("- 词/唱只依据歌词原文、人声证据与你的听感，禁止拿专辑分推断；");
+      prompts.push("- 曲/编/混可参考专辑制作水准，但必须落到这首单曲的实际特征；");
+      prompts.push("- 明显偏离专辑均值时，rationale 必须解释（如“这首是专辑里唯一……”“高分来自其他曲目”）；");
+      prompts.push("- 华语平台偏好旋律和歌词，西方平台偏好编曲和创新性——文化差异不代表谁对谁错");
+      prompts.push("");
+    } else {
+      prompts.push("## 各平台评分参考（校准锚点）");
+      prompts.push("以下是真实世界的评分数据。你的评分应该与这些数据有合理的相关性——");
+      prompts.push("可以有自己的判断（高出或低出1-3分），但不能完全无视共识。");
+      prompts.push("");
+      prompts.push([...songLines, ...albumLines].join("\n"));
+      prompts.push("");
+      prompts.push("**校准规则（专辑赏析）**:");
+      prompts.push("- 各平台评分映射到20分制的大致对应关系：");
+      prompts.push("  - RYM ≥4.0/5 → 编曲/制作维度通常在15-18分区间");
+      prompts.push("  - RYM <3.0/5 → 整体评分应倾向中低分段（9-13分）");
+      prompts.push("  - AOTY ≥80/100 → 这是一张公认的好专辑，五维总分不应低于70");
+      prompts.push("  - Pitchfork ≥8.0/10 → 编曲和制作维度应偏高（15分以上）");
+      prompts.push("  - 如果你的评分与平台共识偏离超过一个档次（如平台给高分你给低分），必须在rationale中解释原因");
+      prompts.push("  - 华语平台（QQ/网易云）偏好旋律和歌词，西方平台（RYM/Pitchfork）偏好编曲和创新性——文化差异不代表谁对谁错");
+      prompts.push("");
     }
-    if (platformRatings.aoty !== undefined && platformRatings.aoty !== null) {
-      const aoty = platformRatings.aoty;
-      const pct = aoty.max ? Math.round(aoty.score / aoty.max * 100) : aoty.score;
-      prompts.push(`- **AOTY (AlbumOfTheYear)**: ${aoty.score}/${aoty.max || 100} (${pct}%) — 聚合专业乐评机构评分`);
-    }
-    if (platformRatings.pitchfork !== undefined && platformRatings.pitchfork !== null) {
-      prompts.push(`- **Pitchfork**: ${platformRatings.pitchfork.score}/${platformRatings.pitchfork.max || 10} — 最具影响力的独立乐评机构`);
-    }
-    if (platformRatings.qq !== undefined && platformRatings.qq !== null) {
-      prompts.push(`- **QQ音乐**: ${platformRatings.qq.score}/${platformRatings.qq.max || 10} — 华语主流听众评分`);
-    }
-    if (platformRatings.spotify !== undefined && platformRatings.spotify !== null) {
-      prompts.push(`- **Spotify 热度**: ${platformRatings.spotify.score}/${platformRatings.spotify.max || 100} — 流媒体热度参考`);
-    }
-    if (platformRatings.apple !== undefined && platformRatings.apple !== null) {
-      prompts.push(`- **Apple Music**: ${platformRatings.apple.score}/${platformRatings.apple.max || 100} — 流媒体热度参考`);
-    }
-    if (platformRatings.youtube !== undefined && platformRatings.youtube !== null) {
-      prompts.push(`- **YouTube 播放**: ${formatNumber(platformRatings.youtube.score)} — 大众触达参考`);
-    }
-    if (platformRatings.netease !== undefined && platformRatings.netease !== null) {
-      prompts.push(`- **网易云音乐**: ${platformRatings.netease.score}/${platformRatings.netease.max || 10} — 华语独立/小众听众评分`);
-    }
-    if (platformRatings.wikipedia) {
-      prompts.push(`- **Wikipedia乐评摘录**: ${platformRatings.wikipedia}`);
-    }
-
-    // 校准换算提示
-    prompts.push("");
-    prompts.push("**校准规则**:");
-    prompts.push("- 各平台评分映射到20分制的大致对应关系：");
-    prompts.push("  - RYM ≥4.0/5 → 编曲/制作维度通常在15-18分区间");
-    prompts.push("  - RYM <3.0/5 → 整体评分应倾向中低分段（9-13分）");
-    prompts.push("  - AOTY ≥80/100 → 这是一张公认的好专辑，五维总分不应低于70");
-    prompts.push("  - Pitchfork ≥8.0/10 → 编曲和制作维度应偏高（15分以上）");
-    prompts.push("  - 如果你的评分与平台共识偏离超过一个档次（如平台给高分你给低分），必须在rationale中解释原因");
-    prompts.push("  - 华语平台（QQ/网易云）偏好旋律和歌词，西方平台（RYM/Pitchfork）偏好编曲和创新性——文化差异不代表谁对谁错");
-    prompts.push("");
   }
 
   // ── 热度数据（评分可信度的权重）──
   if (heatData && Object.keys(heatData).some(k => heatData[k] !== null && heatData[k] !== undefined)) {
     prompts.push("## 热度/影响力指标（校准权重）");
-    prompts.push("以下数据反映这张专辑在大众和专业圈的影响力。热度越高，平台评分的共识越值得尊重；");
-    prompts.push("热度越低，你的个人判断权重越大——冷门好专可以有更大的评分弹性。");
+    prompts.push(isSongScope
+      ? "单曲级热度（听众/播放/单曲评论/YouTube）直接支撑这首单曲；专辑级热度（专辑评论/收藏/Discogs 拥有/RYM 人数）作为背景触达参考。热度只反映关注度，不等于质量。"
+      : "以下数据反映这张专辑在大众和专业圈的影响力。热度越高，平台评分的共识越值得尊重；热度越低，你的个人判断权重越大——冷门好专可以有更大的评分弹性。");
     prompts.push("");
 
     const heatLines = [];
@@ -499,11 +533,11 @@ export function buildScoringPrompt(audioFeatures, listeningAnswers = "", albumMe
   prompts.push("");
   prompts.push("```json");
   prompts.push('{');
-  prompts.push('  "词": {"score": 0, "rationale": "词作分析（80-110字，锚定具体词句和主题。无歌词纯器乐/电子填null）"},');
-  prompts.push('  "曲": {"score": 0, "rationale": "旋律/和声/曲式（80-110字，基于音频特征描述节奏和调性气质）"},');
-  prompts.push('  "编": {"score": 0, "rationale": "编曲/配器/层次/动态（80-110字，基于频谱和能量数据描述织体特征）"},');
-  prompts.push('  "唱": {"score": 0, "rationale": "演唱/演奏表现（80-110字，描述声音特质）"},');
-  prompts.push('  "混": {"score": 0, "rationale": "混音/制作/声音质感（80-110字，基于LUFS、动态幅度、立体声宽度等数据描述）"},');
+  prompts.push('  "词": {"score": 0, "rationale": "词作分析（150-220字，锚定具体词句和主题。无歌词纯器乐/电子填null）"},');
+  prompts.push('  "曲": {"score": 0, "rationale": "旋律/和声/曲式（150-220字，基于音频特征描述节奏和调性气质）"},');
+  prompts.push('  "编": {"score": 0, "rationale": "编曲/配器/层次/动态（150-220字，基于频谱和能量数据描述织体特征）"},');
+  prompts.push('  "唱": {"score": 0, "rationale": "演唱/演奏表现（150-220字，描述声音特质）"},');
+  prompts.push('  "混": {"score": 0, "rationale": "混音/制作/声音质感（150-220字，基于LUFS、动态幅度、立体声宽度等数据描述）"},');
   prompts.push('  "totalScore": 0,');
   prompts.push('  "oneLiner": "一句话感受（不超过18个字，像发朋友圈，不要标题党）",');
   prompts.push('  "tags": ["Indie Rock", "Post-Punk", "Dream Pop"],');
@@ -525,7 +559,7 @@ export function buildScoringPrompt(audioFeatures, listeningAnswers = "", albumMe
   prompts.push("- 基于歌词文本谈词作，基于BPM谈节奏感，基于频谱数据谈音色冷暖——这些是你真实拥有的信息");
   prompts.push("- 不要假装你听到了具体的乐器变化或演唱技巧——你没听到");
   prompts.push("- 用户笔记中提到的点，要在对应维度体现。用户否定的点，不要出现");
-  prompts.push("- 每个维度写 60-90 字，真诚比专业重要");
+  prompts.push("- 每个维度写 150-220 字，真诚比专业重要，但必须句子连贯、不重复");
   prompts.push("");
   prompts.push("oneLiner 要求:");
   prompts.push("- 12-18字，像发朋友圈分享听歌感受，自然不夸张");
