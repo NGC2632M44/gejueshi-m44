@@ -101,7 +101,7 @@ body{
   radial-gradient(700px 480px at 88% 4%, hsla(var(--hue,352),52%,26%,.34), transparent 60%),
   radial-gradient(560px 520px at 6% 96%, hsla(var(--hue,352),55%,16%,.45), transparent 65%)}
 .p-data .inner{position:relative;z-index:2;flex:1;display:flex;flex-direction:column;min-height:0}
-.data-head{display:flex;align-items:center;gap:18px;padding:20px 44px 14px;border-bottom:1px solid rgba(243,238,226,.18)}
+.data-head{display:flex;align-items:center;gap:18px;padding:16px 44px 12px;border-bottom:1px solid rgba(243,238,226,.18);flex-shrink:0}
 .data-head .thumbbox{width:76px;height:76px;font-size:24px;border-color:rgba(243,238,226,.22)}
 .data-head .who{flex:1;min-width:0}
 .data-head .who .a{font:12px var(--f-mono);letter-spacing:4px;text-transform:uppercase;color:rgba(243,238,226,.72)}
@@ -124,10 +124,12 @@ body{
 .data-block-title{font:10px var(--f-mono);letter-spacing:2px;color:rgba(201,162,77,.85);margin-bottom:1px}
 .data-sub{font:10px var(--f-mono);letter-spacing:2px;color:rgba(243,238,226,.45);margin:2px 0 1px}
 .data-list{display:grid;grid-template-columns:1fr 1fr;gap:1px 14px}
-.drow{display:flex;align-items:baseline;gap:8px;font:17px/1.35 var(--f-serif);color:rgba(243,238,226,.82)}
+.data-list.cols-1{grid-template-columns:1fr}
+.data-list.cols-1 .drow .dk{white-space:normal}
+.drow{display:flex;align-items:baseline;gap:8px;font:17px/1.3 var(--f-serif);color:rgba(243,238,226,.82)}
 .drow .dk{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .drow .dv{font:16px var(--f-mono);color:var(--gold);white-space:nowrap}
-.data-foot{display:flex;justify-content:space-between;align-items:center;padding:10px 44px 14px;
+.data-foot{display:flex;justify-content:space-between;align-items:center;padding:8px 44px 12px;flex-shrink:0;
   border-top:1px solid rgba(243,238,226,.16);font:9px var(--f-mono);letter-spacing:2px;color:rgba(243,238,226,.5)}
 /* ========== P2 Radar (Douyin-friendly) ========== */
 .p-radar{height:750px;display:flex;flex-direction:column}
@@ -498,17 +500,25 @@ function renderDataPage(data) {
     '<div class="data-cell heat-cell"><span class="k">' + hk + '</span><span class="v">' + escapeHTML(hv) + '</span><span class="s">' + escapeHTML(hd) + '</span></div>';
   const heatCells = heatCell("DOMESTIC HEAT", heatDom.label || "☆☆☆☆☆", heatDom.detail || "N/A") +
     heatCell("OVERSEAS HEAT", heatIntl.label || "○○○○○", heatIntl.detail || "N/A");
-  const chartsHtml = (dp.charts || []).slice(0, 4).map(c =>
+  const listCols = (rows, getText) => {
+    const maxLen = (rows || []).reduce((m, r) => Math.max(m, getText(r).length), 0);
+    return maxLen > 26 ? "data-list cols-1" : "data-list cols-2";
+  };
+  const chartsRows = (dp.charts || []).slice(0, 3);
+  const chartsHtml = chartsRows.map(c =>
     '<div class="drow"><span class="dk">' + escapeHTML(c.chart) + '</span><span class="dv">#' + escapeHTML(c.peak) + '</span></div>'
   ).join("");
-  const yearHtml = (dp.yearEnd || []).slice(0, 3).map(y =>
+  const yearRows = (dp.yearEnd || []).slice(0, 3);
+  const yearHtml = yearRows.map(y =>
     '<div class="drow"><span class="dk">' + escapeHTML(y.publication + (y.list ? " — " + y.list : "")) + '</span><span class="dv">' + (y.rank ? '#' + escapeHTML(y.rank) : "—") + '</span></div>'
   ).join("");
   const ratings = dp.ratings || { aggregate: [], reviews: [] };
-  const aggHtml = (ratings.aggregate || []).map(r =>
+  const aggRows = (ratings.aggregate || []).slice(0, 2);
+  const aggHtml = aggRows.map(r =>
     '<div class="drow"><span class="dk">' + escapeHTML(r.source) + '</span><span class="dv">' + escapeHTML(r.rating) + '</span></div>'
   ).join("");
-  const revHtml = (ratings.reviews || []).slice(0, 5).map(r =>
+  const revRows = (ratings.reviews || []).slice(0, 4);
+  const revHtml = revRows.map(r =>
     '<div class="drow"><span class="dk">' + escapeHTML(r.source) + '</span><span class="dv">' + escapeHTML(r.rating) + '</span></div>'
   ).join("");
   const credits = dp.credits;
@@ -534,11 +544,11 @@ function renderDataPage(data) {
       '</header>' +
       '<div class="data-body">' +
         (rows ? '<div class="data-grid">' + rows + heatCells + '</div>' : "") +
-        (chartsHtml ? '<div class="data-block"><div class="data-block-title">CHARTS</div><div class="data-list">' + chartsHtml + '</div></div>' : "") +
-        (yearHtml ? '<div class="data-block"><div class="data-block-title">YEAR-END LISTS</div><div class="data-list">' + yearHtml + '</div></div>' : "") +
+        (chartsHtml ? '<div class="data-block"><div class="data-block-title">CHARTS</div><div class="' + listCols(chartsRows, (c) => c.chart + " " + c.peak) + '">' + chartsHtml + '</div></div>' : "") +
+        (yearHtml ? '<div class="data-block"><div class="data-block-title">YEAR-END LISTS</div><div class="' + listCols(yearRows, (y) => y.publication + " " + (y.list || "") + " " + (y.rank || "")) + '">' + yearHtml + '</div></div>' : "") +
         ((aggHtml || revHtml) ? '<div class="data-block"><div class="data-block-title">PROFESSIONAL RATINGS</div>' +
-          (aggHtml ? '<div class="data-sub">Aggregate</div><div class="data-list">' + aggHtml + '</div>' : "") +
-          (revHtml ? '<div class="data-sub">Reviews</div><div class="data-list">' + revHtml + '</div>' : "") +
+          (aggHtml ? '<div class="data-sub">Aggregate</div><div class="' + listCols(aggRows, (r) => r.source + " " + r.rating) + '">' + aggHtml + '</div>' : "") +
+          (revHtml ? '<div class="data-sub">Reviews</div><div class="' + listCols(revRows, (r) => r.source + " " + r.rating) + '">' + revHtml + '</div>' : "") +
           '</div>' : "") +
       '</div>' +
       '<footer class="data-foot"><span>M44 SOUND ANATOMY</span><span>VERIFIED DATA · ' + dateOf(data) + '</span></footer>' +
@@ -553,7 +563,7 @@ function renderRadarPage(data) {
   const minis = dims.map((d, i) => {
     const v = extractScore(data.scores[d]);
     if (v === null) return "";
-    return '<div class="mini' + (v >= 17 ? " hot" : "") + '"><b>' + d + '</b><span>' + dimsEn[i] + '</span><i>' + v + '</i></div>';
+    return '<div class="mini' + (v >= 17 ? " hot" : "") + '" title="' + (v >= 17 ? "优秀档（≥17/20 高亮）" : d + " " + v + "/20") + '"><b>' + d + '</b><span>' + dimsEn[i] + '</span><i>' + v + '</i></div>';
   }).join("");
   return '<section class="page p-radar">' +
     coverTint(data.coverUrl) +
@@ -597,7 +607,7 @@ function renderDimPage(data, d, idx, pos, count) {
       '<div class="d-name"><span class="ch">' + d + '</span><span class="en">' + en + '</span></div>' +
       '<div class="d-score-line">' +
         '<div class="d-score">' + val + '<small>/20</small></div>' +
-        '<div class="d-level">' + levelOf(val) + '</div>' +
+        '<div class="d-level" title="' + (val >= 17 ? "优秀档（≥17/20 高亮）" : levelOf(val)) + '">' + levelOf(val) + '</div>' +
       '</div>' +
       '<div class="d-bar"><div class="fill" data-w="' + pct + '"></div></div>' +
       (why ? '<div class="d-why">' + escapeHTML(why) + '</div>' : "") +
@@ -612,7 +622,7 @@ function renderSummaryPage(data) {
   const cells = dims.map((d, i) => {
     const v = extractScore(data.scores[d]);
     if (v === null) return "";
-    return '<div class="sum-cell' + (v >= 17 ? " hot" : "") + '">' +
+    return '<div class="sum-cell' + (v >= 17 ? " hot" : "") + '" title="' + (v >= 17 ? "优秀档（≥17/20 高亮）" : d + " " + v + "/20") + '">' +
       '<div class="nm">' + d + '</div><div class="en2">' + dimsEn[i] + '</div><div class="sc">' + v + '</div>' +
       '<span class="lv">' + levelOf(v) + '</span></div>';
   }).join("");
