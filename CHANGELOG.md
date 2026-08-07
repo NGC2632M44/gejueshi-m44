@@ -1,5 +1,24 @@
 # Changelog
 
+## [3.29.0] - 2026-08-08
+
+### Added
+- 榜单按影响力排序：`sortChartsByInfluence` 按市场权重（US Billboard 200 >
+  UK > Japan > Germany > France > Australia > Canada > … > Scotland 区域性榜）
+  与细分榜惩罚（Download/Western/Pop Albums 等降权）排序，同权重保持
+  Wikipedia 原始顺序；修复 “Australian/Austrian 里的 us 子串误判成美国”、
+  “Irish/Scottish 因 Official Charts 误判成英国”两个 bug。
+- AnyDecentMusic：解析上限从 8 条提升到全部媒体评分；新增
+  `fetchAnyDecentMusicByUrl`，支持在 Step 2 手动粘贴 ADM review 页 URL
+  （搜索仍会自动命中该页）。
+- 卡片 PROFESSIONAL RATINGS 与 CHARTS 全部展示：数据页拆分为
+  数据页1（参数+热度+影响力 Top18 榜单）+ 数据页2（剩余榜单+年终榜+
+  ADM 聚合+全部媒体评分），超出自动进数据页3；不再截断到 3 条。
+- 专业评分来源链接可点击（媒体名/聚合评分带原乐评 URL）。
+
+### Fixed
+- 卡片导出雷达图定位改为按 `.p-radar` 页面查找，不再依赖固定页码。
+
 ## [3.28.0] - 2026-08-08
 
 ### Added

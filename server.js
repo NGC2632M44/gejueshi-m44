@@ -54,6 +54,7 @@ app.get("/api/research", async (req, res) => {
     lastfmKey: req.headers["x-lastfm-key"] || keys.lastfmApiKey,
     discogsToken: req.headers["x-discogs-token"] || keys.discogsToken,
     songTitle: (req.query.song || "").trim() || undefined,
+    admUrl: (req.query.admUrl || "").trim() || undefined,
   });
   console.log(`✅ 研究完成 (${Date.now() - start}ms)`);
   res.json(data);

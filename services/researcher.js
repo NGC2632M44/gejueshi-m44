@@ -88,9 +88,14 @@ export async function researchAlbum(query, opts = {}) {
   await Promise.allSettled(tasks);
   // 若 Wikipedia 抓到的是艺人页而非专辑页，用已解析的专辑名（Discogs/Last.fm）重查
   const resolvedAlbum = r.discogs?.results?.[0]?.title || r.lastfm?.title || null;
-  // ADM 用专辑名搜索（单曲通常搜不到；全查询“专辑+艺人”会无结果）
+  // ADM 用专辑名搜索（单曲通常搜不到；全查询“专辑+艺人”会无结果）；
+  // 用户手动粘贴 review 页 URL 时直接抓取该页
   try {
-    r.anyDecentMusic = await fetchAnyDecentMusic(resolvedAlbum || query);
+    if (opts.admUrl && /anydecentmusic\.com\/review/i.test(opts.admUrl)) {
+      r.anyDecentMusic = await fetchAnyDecentMusicByUrl(opts.admUrl);
+    } else {
+      r.anyDecentMusic = await fetchAnyDecentMusic(resolvedAlbum || query);
+    }
   } catch (e) {
     r.errors.push(`AnyDecentMusic: ${e.message}`);
   }
@@ -322,6 +327,70 @@ function classifyWikiTables(tables) {
   return { charts, yearEnd, aggregate, reviews };
 }
 
+/**
+ * 榜单影响力排序：按市场/榜单类型加权，同权时保持 Wikipedia 原始顺序。
+ * 参考行业惯例：US Billboard 200 / UK / Japan / Germany / France 等主流市场
+ * 影响力高于小市场与细分榜（Download/Western/Pop Albums 等）。
+ */
+export function sortChartsByInfluence(charts) {
+  const marketWeights = [
+    { re: /global/i, w: 100 },
+    { re: /\b(?:u\.?\s*s\.?|us)\b|billboard\s*200|united states|top billboard/i, w: 95 },
+    { re: /\buk\b|united kingdom|official albums chart/i, w: 92 },
+    { re: /japan|japanese|oricon/i, w: 88 },
+    { re: /german|germany/i, w: 85 },
+    { re: /french|france/i, w: 83 },
+    { re: /australia/i, w: 80 },
+    { re: /canad/i, w: 78 },
+    { re: /ireland|irish/i, w: 74 },
+    { re: /netherlands|dutch/i, w: 72 },
+    { re: /new zealand/i, w: 70 },
+    { re: /swed/i, w: 68 },
+    { re: /norw/i, w: 66 },
+    { re: /denmark|danish/i, w: 64 },
+    { re: /finland|finnish/i, w: 62 },
+    { re: /swiss|switzerland/i, w: 60 },
+    { re: /austria|austrian/i, w: 58 },
+    { re: /belgium|ultratop/i, w: 56 },
+    { re: /italy|italian|fimi/i, w: 54 },
+    { re: /spain|spanish|promusicae/i, w: 52 },
+    { re: /portug/i, w: 50 },
+    { re: /poland|polish/i, w: 48 },
+    { re: /hungary|hungarian/i, w: 46 },
+    { re: /greece|greek|ifpi/i, w: 44 },
+    { re: /czech|slovak/i, w: 42 },
+    { re: /lithuania/i, w: 40 },
+    { re: /iceland/i, w: 38 },
+    { re: /croatia/i, w: 36 },
+    { re: /argentina|brazil|mexico/i, w: 35 },
+    { re: /china|korea|korean|taiwan|hong kong/i, w: 34 },
+    { re: /scotland|scottish/i, w: 30 },
+  ];
+  const nichePenalties = [
+    { re: /download/i, p: -12 },
+    { re: /western albums|overseas albums|international albums/i, p: -10 },
+    { re: /heatseekers|independent|indie albums/i, p: -10 },
+    { re: /pop albums/i, p: -8 },
+    { re: /compilation/i, p: -5 },
+    { re: /rock|metal|dance|electronic|classical|jazz/i, p: -6 },
+    { re: /sales albums/i, p: -2 },
+    { re: /hot 100|singles/i, p: 5 },
+  ];
+  const weighted = (charts || []).map((c, idx) => {
+    const s = String(c.chart || "");
+    let w = 20;
+    for (const mw of marketWeights) {
+      if (mw.re.test(s)) { w = mw.w; break; }
+    }
+    for (const np of nichePenalties) {
+      if (np.re.test(s)) w += np.p;
+    }
+    return { ...c, _weight: Math.max(1, w), _idx: idx };
+  });
+  weighted.sort((a, b) => (b._weight - a._weight) || (a._idx - b._idx));
+  return weighted.map(({ _weight, _idx, ...c }) => c);
+}
+
 function splitCredits(s) {
   return String(s || "")
     .split(/[,，、;；/]+/)
@@ -362,7 +431,7 @@ function buildWikiData(r, songTitle) {
       ? { aggregate: [], reviews: Object.entries(r.reception.tableScores).map(([k, v]) => ({ source: k, rating: `${v.score}/${v.max}` })) }
       : { aggregate: [], reviews: [] });
   return {
-    charts: chartsTables.charts,
+    charts: sortChartsByInfluence(chartsTables.charts),
     yearEnd: yearTables.yearEnd,
     ratings: tableRatings,
     credits: songTitle ? parseWikiTrackCredits(r.trackListing?.html || "", songTitle) : null,
@@ -878,53 +947,66 @@ async function fetchAnyDecentMusic(query) {
     });
     if (!revRes.ok) return null;
     const revHtml = await revRes.text();
-
-    // 解析聚合评分（<p class="score">7.2</p>，ADM rating）
-    const overallMatch = revHtml.match(/<p[^>]*class="[^"]*score[^"]*"[^>]*>\s*([\d.]+)\s*<\/p>/i)
-      || revHtml.match(/ADM rating[^<]*<[^>]*>[\s\S]*?([\d.]+)/i)
-      || revHtml.match(/(\d\.\d)\s*<\/span>/i);
-    const overall = overallMatch ? parseFloat(overallMatch[1]) : null;
-
-    // 解析媒体个体评分：<span class="data_rating">6.7</span> ... <span>Pitchfork</span> ... <p>quote</p> ... Read Review
-    const individualScores = [];
-    const itemRegex = /<li[^>]*class="[^"]*review_item[^"]*"[\s\S]*?<span[^>]*class="data_rating"[^>]*>\s*([\d.]+)\s*<\/span>[\s\S]*?<h4[^>]*>\s*[\d.]+\s*\|[^<]*<span[^>]*>([^<]+)<\/span>[\s\S]*?<p>\s*([\s\S]*?)\s*<\/p>[\s\S]*?<a[^>]*href='([^']+)'/gi;
-    let m;
-    while ((m = itemRegex.exec(revHtml)) !== null) {
-      const score = parseFloat(m[1]);
-      const pub = m[2].trim();
-      if (!isNaN(score) && score > 0 && pub.length > 1) {
-        individualScores.push({
-          publication: pub,
-          score,
-          max: 10,
-          quote: m[3].replace(/<[^>]+>/g, "").replace(/&#39;/g, "'").replace(/&amp;/g, "&").trim().slice(0, 220),
-          url: m[4].startsWith("http") ? m[4] : `https:${m[4]}`,
-        });
-      }
-    }
-    if (individualScores.length > 8) individualScores.length = 8; // 最多8个
-
-    // 专辑信息：艺人 / 专辑名 / 厂牌 / 发行日期
-    const artist = revHtml.match(/<h2>\s*([^<]+)<\/h2>\s*<h3>/i)?.[1]?.trim() || null;
-    const albumTitle = revHtml.match(/<h3>\s*([\s\S]*?)\s*<\/h3>/i)?.[1]?.replace(/<[^>]+>/g, "").trim() || null;
-    const label = revHtml.match(/<dt>\s*Label\s*<\/dt>\s*<dd>([\s\S]*?)<\/dd>/i)?.[1]?.replace(/<[^>]+>/g, "").trim() || null;
-    const releaseDate = revHtml.match(/<dt>\s*UK Release date\s*<\/dt>\s*<dd>([\s\S]*?)<\/dd>/i)?.[1]?.replace(/<[^>]+>/g, "").trim() || null;
-
-    return {
-      reviewId,
-      title: albumTitle,
-      artist,
-      overall: overall != null ? Math.round(overall * 10) / 10 : null,
-      overallDisplay: overall != null ? `${overall}/10` : null,
-      individualScores,
-      label,
-      releaseDate,
-      url: reviewUrl,
-      source: "AnyDecentMusic",
-    };
+    return parseAnyDecentMusicPage(revHtml, reviewUrl, reviewId);
   } catch (e) {
     return null;
   }
+}
+
+export function parseAnyDecentMusicPage(revHtml, reviewUrl, reviewId) {
+  // 解析聚合评分（<p class="score">7.2</p>，ADM rating）
+  const overallMatch = revHtml.match(/<p[^>]*class="[^"]*score[^"]*"[^>]*>\s*([\d.]+)\s*<\/p>/i)
+    || revHtml.match(/ADM rating[^<]*<[^>]*>[\s\S]*?([\d.]+)/i)
+    || revHtml.match(/(\d\.\d)\s*<\/span>/i);
+  const overall = overallMatch ? parseFloat(overallMatch[1]) : null;
+
+  // 解析媒体个体评分：<span class="data_rating">6.7</span> ... <span>Pitchfork</span> ... <p>quote</p> ... Read Review
+  const individualScores = [];
+  const itemRegex = /<li[^>]*class="[^"]*review_item[^"]*"[\s\S]*?<span[^>]*class="data_rating"[^>]*>\s*([\d.]+)\s*<\/span>[\s\S]*?<h4[^>]*>\s*[\d.]+\s*\|[^<]*<span[^>]*>([^<]+)<\/span>[\s\S]*?<p>\s*([\s\S]*?)\s*<\/p>[\s\S]*?<a[^>]*href='([^']+)'/gi;
+  let m;
+  while ((m = itemRegex.exec(revHtml)) !== null) {
+    const score = parseFloat(m[1]);
+    const pub = m[2].trim();
+    if (!isNaN(score) && score > 0 && pub.length > 1) {
+      individualScores.push({
+        publication: pub,
+        score,
+        max: 10,
+        quote: m[3].replace(/<[^>]+>/g, "").replace(/&#39;/g, "'").replace(/&amp;/g, "&").trim().slice(0, 220),
+        url: m[4].startsWith("http") ? m[4] : `https:${m[4]}`,
+      });
+    }
+  }
+
+  // 专辑信息：艺人 / 专辑名 / 厂牌 / 发行日期
+  const artist = revHtml.match(/<h2>\s*([^<]+)<\/h2>\s*<h3>/i)?.[1]?.trim() || null;
+  const albumTitle = revHtml.match(/<h3>\s*([\s\S]*?)\s*<\/h3>/i)?.[1]?.replace(/<[^>]+>/g, "").trim() || null;
+  const label = revHtml.match(/<dt>\s*Label\s*<\/dt>\s*<dd>([\s\S]*?)<\/dd>/i)?.[1]?.replace(/<[^>]+>/g, "").trim() || null;
+  const releaseDate = revHtml.match(/<dt>\s*UK Release date\s*<\/dt>\s*<dd>([\s\S]*?)<\/dd>/i)?.[1]?.replace(/<[^>]+>/g, "").trim() || null;
+
+  return {
+    reviewId,
+    title: albumTitle,
+    artist,
+    overall: overall != null ? Math.round(overall * 10) / 10 : null,
+    overallDisplay: overall != null ? `${overall}/10` : null,
+    individualScores,
+    label,
+    releaseDate,
+    url: reviewUrl,
+    source: "AnyDecentMusic",
+  };
+}
+
+async function fetchAnyDecentMusicByUrl(url) {
+  const res = await proxyFetch(url, {
+    headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", "Accept": "text/html" },
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!res.ok) return null;
+  const html = await res.text();
+  const id = String(url).match(/\/review\/(\d+)/i)?.[1] || null;
+  return parseAnyDecentMusicPage(html, url, id);
 }
 
 function buildAggregate(r) {

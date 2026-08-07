@@ -80,6 +80,10 @@ python -m pytest scripts/ -q
 - 最终文案审阅：AI 评分+自查后，五维 rationale / 一句话总评 / 标签
   会在生成卡片前以可编辑窗口展示，你有最终编辑权；不改也能直接生成。
   你笔记里写明的采样/原曲/跨歌曲歌词引用会被当作权威事实保留。
+- 榜单按影响力排序展示（US Billboard 200 > UK > Japan > Germany > France
+  > Australia > Canada > … > 区域性榜），数据页拆分为多页、全部展示不截断；
+  PROFESSIONAL RATINGS 接入 AnyDecentMusic 聚合与全部媒体评分
+  （也可手动粘贴 ADM review 页 URL）。
 
 详细设计见 `docs/parser-architecture.md`。
 

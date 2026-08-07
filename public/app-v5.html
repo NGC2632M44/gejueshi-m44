@@ -321,6 +321,10 @@ details.manual .tip{font:11px/1.7 var(--f-sans);color:var(--ink-3);margin:10px 0
           <label>搜索 — 专辑名 + 艺术家</label>
           <input type="text" id="research-query" placeholder="Midnight Boom The Kills">
         </div>
+        <div class="field">
+          <label>AnyDecentMusic 乐评页 URL（可选，手动粘贴用于 PROFESSIONAL RATINGS）<a href="http://www.anydecentmusic.com/search-results.aspx?search=" target="_blank" style="margin-left:6px;color:var(--gold)">官网 ↗</a></label>
+          <input type="text" id="adm-url" placeholder="http://www.anydecentmusic.com/review/14677/Charli-XCX-Music-Fashion-Film.aspx" oninput="saveDraft()">
+        </div>
         <div class="btn-row">
           <button class="btn ghost" id="btn-research" onclick="runResearch()">搜索评分</button>
           <span class="inline-status" id="research-status"></span>
@@ -526,7 +530,7 @@ const DRAFT_KEY = "m44-draft-v5";
 
 // ============ 草稿自动保存 / 恢复 ============
 const DRAFT_FIELDS = [
-  "audio-path", "research-query",
+  "audio-path", "research-query", "adm-url",
   "online-song", "online-artist", "online-album",
   "plat-rym-album", "plat-rym-album-count", "plat-rym-song", "plat-rym-song-count", "plat-rym-genres",
   "plat-aoty-album", "plat-aoty-critic", "plat-aoty-song", "plat-discogs",
@@ -1164,7 +1168,8 @@ async function runResearch() {
 
   try {
     const songParam = [$("online-song").value.trim(), $("online-artist").value.trim()].filter(Boolean).join(" ") || query;
-    const res = await fetch(`${API}/api/research?q=${encodeURIComponent(query)}&song=${encodeURIComponent(songParam)}`);
+    const admUrl = $("adm-url").value.trim();
+    const res = await fetch(`${API}/api/research?q=${encodeURIComponent(query)}&song=${encodeURIComponent(songParam)}${admUrl ? `&admUrl=${encodeURIComponent(admUrl)}` : ""}`);
     researchData = await res.json();
     const agg = researchData.aggregate || {};
     const researchErrors = (researchData.errors || []).filter(Boolean);
@@ -1548,12 +1553,36 @@ function buildDataPage(af, heatScore, researchData, scores) {
   const chordSrc = (af && af.chord_source === "local_unverified") ? "sonara (local, unverified)" : "Hooktheory/SongBPM";
   add("Chord Progression", (af && af.chord_sequence) || null, chordSrc);
   const wd = (researchData && researchData.wikiData) || {};
+  // PROFESSIONAL RATINGS：Wikipedia 乐评表 + AnyDecentMusic（聚合 + 全部媒体评分）
+  const ratings = { aggregate: [], reviews: [] };
+  const adm = researchData && researchData.anyDecentMusic;
+  if (adm) {
+    if (adm.overall != null) {
+      ratings.aggregate.push({ source: "AnyDecentMusic", rating: adm.overallDisplay || `${adm.overall}/10`, url: adm.url || null });
+    }
+    for (const s of (adm.individualScores || [])) {
+      ratings.reviews.push({ source: s.publication, rating: `${s.score}/${s.max || 10}`, quote: s.quote || "", url: s.url || null });
+    }
+  }
+  if (wd.ratings) {
+    ratings.aggregate.push(...(wd.ratings.aggregate || []));
+    ratings.reviews.push(...(wd.ratings.reviews || []));
+  }
+  // 按媒体名去重（ADM 在前，重复时保留 ADM 的评分/引用/链接）
+  const seenPub = new Set();
+  ratings.reviews = ratings.reviews.filter(r => {
+    const key = (r.source || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+    if (!key) return true;
+    if (seenPub.has(key)) return false;
+    seenPub.add(key);
+    return true;
+  });
   return {
     params,
     heat: heatScore || null,
     charts: (Array.isArray(wd.charts) && wd.charts.length) ? wd.charts : null,
     yearEnd: (Array.isArray(wd.yearEnd) && wd.yearEnd.length) ? wd.yearEnd : null,
-    ratings: (wd.ratings && (wd.ratings.aggregate.length || wd.ratings.reviews.length)) ? wd.ratings : null,
+    ratings: (ratings.aggregate.length || ratings.reviews.length) ? ratings : null,
     credits: wd.credits || null,
   };
 }
