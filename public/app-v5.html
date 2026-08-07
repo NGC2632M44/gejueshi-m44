@@ -1527,6 +1527,64 @@ function updateCoverButtons() {
 }
 
 // ============ Step 4: 评分 + 卡片 ============
+// 前端兜底：无论研究数据是否来自旧服务，卡片渲染前都按影响力重排榜单。
+// 与服务端 researcher.sortChartsByInfluence 保持同一套权重。
+function sortChartsByInfluence(charts) {
+  const marketWeights = [
+    { re: /global/i, w: 100 },
+    { re: /\b(?:u\.?\s*s\.?|us)\b|billboard\s*200|united states|top billboard/i, w: 95 },
+    { re: /\buk\b|united kingdom|official albums chart/i, w: 92 },
+    { re: /japan|japanese|oricon/i, w: 88 },
+    { re: /german|germany/i, w: 85 },
+    { re: /french|france/i, w: 83 },
+    { re: /australia/i, w: 80 },
+    { re: /canad/i, w: 78 },
+    { re: /ireland|irish/i, w: 74 },
+    { re: /netherlands|dutch/i, w: 72 },
+    { re: /new zealand/i, w: 70 },
+    { re: /swed/i, w: 68 },
+    { re: /norw/i, w: 66 },
+    { re: /denmark|danish/i, w: 64 },
+    { re: /finland|finnish/i, w: 62 },
+    { re: /swiss|switzerland/i, w: 60 },
+    { re: /austria|austrian/i, w: 58 },
+    { re: /belgium|ultratop/i, w: 56 },
+    { re: /italy|italian|fimi/i, w: 54 },
+    { re: /spain|spanish|promusicae/i, w: 52 },
+    { re: /portug/i, w: 50 },
+    { re: /poland|polish/i, w: 48 },
+    { re: /hungary|hungarian/i, w: 46 },
+    { re: /greece|greek|ifpi/i, w: 44 },
+    { re: /czech|slovak/i, w: 42 },
+    { re: /lithuania/i, w: 40 },
+    { re: /iceland/i, w: 38 },
+    { re: /croatia/i, w: 36 },
+    { re: /argentina|brazil|mexico/i, w: 35 },
+    { re: /china|korea|korean|taiwan|hong kong/i, w: 34 },
+    { re: /scotland|scottish/i, w: 30 },
+  ];
+  const nichePenalties = [
+    { re: /download/i, p: -12 },
+    { re: /western albums|overseas albums|international albums/i, p: -10 },
+    { re: /heatseekers|independent|indie albums/i, p: -10 },
+    { re: /pop albums/i, p: -8 },
+    { re: /compilation/i, p: -5 },
+    { re: /rock|metal|dance|electronic|classical|jazz/i, p: -6 },
+    { re: /sales albums/i, p: -2 },
+    { re: /hot 100|singles/i, p: 5 },
+  ];
+  return (charts || []).map((c, idx) => {
+    const s = String(c.chart || "");
+    let w = 20;
+    for (const mw of marketWeights) {
+      if (mw.re.test(s)) { w = mw.w; break; }
+    }
+    for (const np of nichePenalties) if (np.re.test(s)) w += np.p;
+    return { ...c, _weight: Math.max(1, w), _idx: idx };
+  }).sort((a, b) => (b._weight - a._weight) || (a._idx - b._idx))
+    .map(({ _weight, _idx, ...c }) => c);
+}
+
 function buildDataPage(af, heatScore, researchData, scores) {
   const d = (af && af.dynamics) || {};
   const sp = (af && af.spectral) || {};
@@ -1580,7 +1638,7 @@ function buildDataPage(af, heatScore, researchData, scores) {
   return {
     params,
     heat: heatScore || null,
-    charts: (Array.isArray(wd.charts) && wd.charts.length) ? wd.charts : null,
+    charts: (Array.isArray(wd.charts) && wd.charts.length) ? sortChartsByInfluence(wd.charts) : null,
     yearEnd: (Array.isArray(wd.yearEnd) && wd.yearEnd.length) ? wd.yearEnd : null,
     ratings: (ratings.aggregate.length || ratings.reviews.length) ? ratings : null,
     credits: wd.credits || null,

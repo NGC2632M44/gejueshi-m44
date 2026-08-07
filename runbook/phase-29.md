@@ -76,3 +76,12 @@
 实测《Music, Fashion, Film》：
 页 1 = 参数 + ADM 8.0 + 14 条媒体评分（两列）+ TOP 6 榜单（两列）；
 页 2 = 其余 18 条榜单；页 3 = 剩余 5 条榜单。均 < 750px。
+
+## 3.29.3 修正（2026-08-08）
+
+用户仍看到字母序（Australian/Austrian/Belgian/Canadian/Danish），
+原因：卡片使用了旧服务/旧研究数据。
+
+修正：前端 `buildDataPage` 增加 `sortChartsByInfluence` 兜底，
+生成卡片前强制按影响力重排（与服务端同一套权重）。
+即使不重启服务、不重新研究，刷新页面后重新生成卡片也会是影响力顺序。
