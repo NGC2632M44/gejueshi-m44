@@ -1876,6 +1876,7 @@ function toggleAlbumMode() {
     $("audio-stats").style.display = "none";
     $("guide-box").style.display = "none";
     $("verify-panel").style.display = "none";
+    $("lyrics-section").style.display = "none";
     $("album-track-section").style.display = "block";
     // 更新 rail
     $("rail").querySelector('[data-step="1"] .nm').textContent = "曲目管理";
@@ -1893,6 +1894,7 @@ function toggleAlbumMode() {
     document.querySelector("#step1 .field:nth-child(2)").style.display = "";
     $("btn-analyze").closest(".btn-row").style.display = "";
     $("album-track-section").style.display = "none";
+    $("lyrics-section").style.display = "";
     $("rail").querySelector('[data-step="1"] .nm').textContent = "音频分析";
   }
   saveDraft();
@@ -1981,12 +1983,16 @@ async function loadLibraryTracks() {
           }
         }
         if (hasScores) info.push("★" + t.scores.totalScore);
+        const tsRaw = t.createdAt || t.updatedAt || (t.id && t.id.startsWith("track_") ? new Date(parseInt(t.id.slice(6), 10)).toISOString() : "");
+        const timeStr = tsRaw ? new Date(tsRaw).toLocaleString("zh-CN", { hour12: false }).replace(/\//g, "-") : "";
+        if (timeStr) info.push(timeStr);
         html += `<div style="padding:8px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line-soft);cursor:pointer;${selected ? 'background:rgba(196,30,58,.1)' : ''}"
           onclick="toggleTrackSelect('${t.id}')" data-track-id="${t.id}">
           <input type="checkbox" ${selected ? "checked" : ""} onclick="event.stopPropagation();toggleTrackSelect('${t.id}')" style="accent-color:var(--accent)">
           <span style="flex:1;font:12px var(--f-sans);color:var(--ink)">${escapeHTML(t.title || t.audioFeatures?.filename || t.id)}</span>
           <span style="font:10px var(--f-mono);color:${hasAnalysis ? '#4caf7d' : 'var(--ink-3)'}">${hasAnalysis ? "✓" : "×"}</span>
           <span style="font:10px var(--f-mono);color:var(--ink-3)">${info.join(" · ")}</span>
+          <button onclick="event.stopPropagation();deleteLibraryTrack('${t.id}')" title="删除此素材库曲目" style="border:1px solid var(--line);background:var(--bg);color:var(--accent);border-radius:6px;width:22px;height:22px;font:11px var(--f-mono);cursor:pointer">✕</button>
         </div>`;
       }
     }
@@ -2018,6 +2024,22 @@ function toggleTrackSelect(trackId) {
     $("album-name-input").placeholder = "专辑名称 (例如: " + (selectedAlbumTracks[0].albumName || selectedAlbumTracks[0].albumTitle || selectedAlbumTracks[0].title || "") + ")";
   }
   autoFillAlbumMeta();
+}
+
+async function deleteLibraryTrack(trackId) {
+  const t = libraryTracks.find((x) => x.id === trackId);
+  const label = t ? (t.title || t.audioFeatures?.filename || t.id) : trackId;
+  if (!confirm(`删除素材库曲目「${label}」？\n（只删除素材库记录，不影响 output 里已生成的卡片文件）`)) return;
+  try {
+    const res = await fetch(`${API}/api/library/tracks/${encodeURIComponent(trackId)}`, { method: "DELETE" });
+    const data = await res.json();
+    if (!data.success) return toast("删除失败：" + (data.error || "未知错误"), "err");
+    selectedAlbumTracks = selectedAlbumTracks.filter((x) => x.id !== trackId);
+    toast("已删除「" + label + "」", "ok");
+    loadLibraryTracks();
+  } catch (e) {
+    toast("删除失败：" + e.message, "err");
+  }
 }
 
 function autoFillAlbumMeta() {

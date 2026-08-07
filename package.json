@@ -1,6 +1,6 @@
 {
   "name": "gejueshi",
-  "version": "3.20.0",
+  "version": "3.21.0",
   "description": "歌掘士 M44 - 音乐五维分析工作台（词/曲/编/唱/混）",
   "type": "module",
   "main": "server.js",

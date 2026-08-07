@@ -590,6 +590,18 @@ app.post("/api/library", (req, res) => {
   res.json({ success: true, count: lib[type].length, autoOrganized: type === "tracks" && !!(data.albumName || data.albumTitle) });
 });
 
+// 删除素材库曲目（不影响 output 卡片文件）
+app.delete("/api/library/tracks/:id", (req, res) => {
+  const lib = readLibrary();
+  const before = (lib.tracks || []).length;
+  lib.tracks = (lib.tracks || []).filter((t) => t.id !== req.params.id);
+  if (lib.tracks.length === before) {
+    return res.status(404).json({ error: "曲目不存在" });
+  }
+  writeLibrary(lib);
+  res.json({ success: true, remaining: lib.tracks.length });
+});
+
 /**
  * 自动按专辑归类: 曲目入库时自动创建/更新专辑分组
  * 目录结构: output/{专辑名}/ (单曲卡片存放)
@@ -870,6 +882,8 @@ ${userGroundTruth || "（无）"}
 5. 禁止"乐评里提到""平台评分显示""媒体评价"等元描述 → 删除或改写为内容本身
 6. 歌词引用必须完整成句；半句截断或拼错的引用 → 删除
 7. 语气轻佻（上头/绝了/拿捏/很顶/氛围感拉满等）→ 改写为克制专业的乐评表达
+8. rationale 中出现 dB/LUFS/Hz/True Peak/LRA/Crest 等工程术语或具体数值
+   （如“峰值顶破0dB”）→ 改写为听感语言；技术数据只保留在数据页
 
 输出 JSON（score 不动）:
 {

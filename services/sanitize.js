@@ -1,7 +1,16 @@
 // 卡片文本后处理：删除元数据串/内部用语，控制长度，保证面向读者可读。
+function stripTechTokens(text) {
+  return String(text || "")
+    .replace(/\b顶破\s*0\s*dB\b/gi, "接近削波边缘")
+    .replace(/\s*(True\s*Peak|dBTP|LUFS|LRA|Crest\s*Factor|RMS|FFT|intersample|clipping_risk|integrated_loudness|sampling\s*rate|phase\s*coll?relation|spectral\s*centroid|spectral\s*rolloff|spectral\s*bandwidth)\b/gi, " ")
+    .replace(/\b\d+(?:\.\d+)?\s*(?:dBFS?|dBTP|Hz|kHz)\b/gi, " ")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
 export function sanitizeOneLiner(value) {
   if (typeof value !== "string") return value;
-  let text = value;
+  let text = stripTechTokens(value);
   text = text.replace(/\s*\[[^\]]+\]\s*/g, " ");
   text = text.replace(/\s+([，。！？、；：])/g, "$1").replace(/[ \t]{2,}/g, " ").trim();
   const bannedTerms = [
@@ -85,6 +94,7 @@ export function sanitizeScores(scores, lyricsText = "") {
     if (!entry || typeof entry.rationale !== "string") continue;
 
     let text = entry.rationale;
+    text = stripTechTokens(text);
     // 删除面向读者的元数据串（如 [混音:LUFS=-7.6]），只保留自然语言
     text = text.replace(/\s*\[[^\]]+\]\s*/g, " ");
     text = text.replace(/\s+([，。！？、；：])/g, "$1").replace(/[ \t]{2,}/g, " ").replace(/。\s*。/g, "。");
