@@ -580,6 +580,7 @@ export function buildScoringPrompt(audioFeatures, listeningAnswers = "", albumMe
   prompts.push("- 禁止写具体鼓机/合成器型号（808/909 等）——音频算法无法可靠判断音源型号");
   prompts.push("- 用户笔记中提到的点，要在对应维度体现。用户否定的点，不要出现");
   prompts.push("- 每个维度写 150-220 字，真诚比专业重要，但必须句子连贯、不重复");
+  prompts.push("- 语气：专业乐评口吻，克制、准确、有依据；避免“上头/绝了/拿捏/很顶/氛围感拉满/封神/yyds/天花板/杀疯了”等轻佻网络表达；可以感性，但不能轻浮");
   prompts.push("- 禁止写\"乐评里提到\"\"平台评分显示\"\"媒体评价\"\"评论区提到\"这类元描述——直接写内容本身");
   prompts.push("- 歌词引用必须完整成句、逐字匹配原文；记不全就不要引用，改为描述歌词主题；禁止半句截断或拼错单词");
   prompts.push("");
@@ -699,10 +700,6 @@ export function calcHeatScore(heat) {
     { min: 100, stars: 1 }, { min: 600, stars: 2 }, { min: 999, stars: 3 },
     { min: 5000, stars: 4 }, { min: 20000, stars: 5 },
   ];
-  const SONG_COLLECT_TIERS = [
-    { min: 998, stars: 1 }, { min: 2000, stars: 2 }, { min: 10000, stars: 3 },
-    { min: 50000, stars: 4 }, { min: 200000, stars: 5 },
-  ];
   const ALBUM_COMMENT_TIERS = [
     { min: 10, stars: 1 }, { min: 99, stars: 2 }, { min: 999, stars: 3 },
     { min: 1800, stars: 4 }, { min: 3800, stars: 5 },
@@ -716,7 +713,6 @@ export function calcHeatScore(heat) {
   const neSongComments = pick("netease_song_comments");
   const qqComments = pick("qq_music_comments");
   const songComments = Math.max(neSongComments, qqComments); // QQ/网易云取更高平台
-  const songCollect = pick("netease_song_album_collections");
   const albumComments = neAlbumComments;
   const albumCollect = pick("netease_album_collections");
   const nePlaycount = pick("netease_playcount");
@@ -725,14 +721,12 @@ export function calcHeatScore(heat) {
   if (neSongComments) domSources.push(`网易云单曲评论 ${formatNumber(neSongComments)}`);
   if (qqComments) domSources.push(`QQ评论 ${formatNumber(qqComments)}`);
   if (albumComments) domSources.push(`网易云专辑评论 ${formatNumber(albumComments)}`);
-  if (songCollect) domSources.push(`单曲所属专辑收藏 ${formatNumber(songCollect)}`);
   if (albumCollect) domSources.push(`网易云专辑收藏 ${formatNumber(albumCollect)}`);
   if (nePlaycount) domSources.push(`网易云热度 ${nePlaycount}/100`);
 
   const playStars = nePlaycount >= 95 ? 5 : nePlaycount >= 85 ? 3 : nePlaycount >= 70 ? 2 : nePlaycount >= 55 ? 1 : 0;
   const domSignals = [];
   if (songComments) domSignals.push({ label: (qqComments > neSongComments ? "QQ单曲评论" : "NC单曲评论"), stars: tierOf(songComments, SONG_COMMENT_TIERS), value: songComments });
-  if (songCollect) domSignals.push({ label: "NC单曲收藏", stars: tierOf(songCollect, SONG_COLLECT_TIERS), value: songCollect });
   if (albumComments) domSignals.push({ label: "NC专辑评论", stars: tierOf(albumComments, ALBUM_COMMENT_TIERS), value: albumComments });
   if (albumCollect) domSignals.push({ label: "NC专辑收藏", stars: tierOf(albumCollect, ALBUM_COLLECT_TIERS), value: albumCollect });
   if (nePlaycount) domSignals.push({ label: "NC热度", stars: playStars, value: nePlaycount });
@@ -741,7 +735,6 @@ export function calcHeatScore(heat) {
 
   const domStars = Math.max(
     tierOf(songComments, SONG_COMMENT_TIERS),
-    tierOf(songCollect, SONG_COLLECT_TIERS),
     tierOf(albumComments, ALBUM_COMMENT_TIERS),
     tierOf(albumCollect, ALBUM_COLLECT_TIERS),
     playStars
@@ -798,7 +791,7 @@ export function calcHeatScore(heat) {
       stars: 0, label: "无数据", sources: [],
       domestic: { stars: 0, label: "☆☆☆☆☆", sources: [], detail: domDetail },
       international: { stars: 0, label: "○○○○○", sources: [], detail: intlDetail },
-      legend: "国内★: 单曲评论100/600/999/5千/2万；单曲收藏998/2千/1万/5万；专辑评论10/99/999/1800/3800；专辑收藏500/1千/9800/1.8万/4.8万；热度分55/70/85/95。评论/收藏取更高者，QQ与网易云取更高平台。国外●: 听众1万/5万/8万/30万/100万；播放10万/30万/100万/1000万/1亿；Discogs 200/1千/3千/1.5万/5万（want/have≥0.6 +1）；RYM 100/500/1500/5千/2万；Genius 1万/5万/20万/100万/500万。",
+      legend: "国内★: 单曲评论100/600/999/5千/2万；专辑评论10/99/999/1800/3800；专辑收藏500/1千/9800/1.8万/4.8万；热度分55/70/85/95。评论/收藏取更高者，QQ与网易云取更高平台。国外●: 听众1万/5万/8万/30万/100万；播放10万/30万/100万/1000万/1亿；Discogs 200/1千/3千/1.5万/5万（want/have≥0.6 +1）；RYM 100/500/1500/5千/2万；Genius 1万/5万/20万/100万/500万。",
     };
   }
 
@@ -810,7 +803,7 @@ export function calcHeatScore(heat) {
     sources: [...domSources, ...intlSources],
     domestic: { stars: domStars, label: domLabel, sources: domSources, detail: domDetail },
     international: { stars: intlStars, label: intlLabel, sources: intlSources, detail: intlDetail },
-    legend: "国内★: 单曲评论100/600/999/5千/2万；单曲收藏998/2千/1万/5万；专辑评论10/99/999/1800/3800；专辑收藏500/1千/9800/1.8万/4.8万；热度分55/70/85/95。评论/收藏取更高者，QQ与网易云取更高平台。国外●: 听众1万/5万/8万/30万/100万；播放10万/30万/100万/1000万/1亿；Discogs 200/1千/3千/1.5万/5万（want/have≥0.6 +1）；RYM 100/500/1500/5千/2万；Genius 1万/5万/20万/100万/500万。",
+    legend: "国内★: 单曲评论100/600/999/5千/2万；专辑评论10/99/999/1800/3800；专辑收藏500/1千/9800/1.8万/4.8万；热度分55/70/85/95。评论/收藏取更高者，QQ与网易云取更高平台。国外●: 听众1万/5万/8万/30万/100万；播放10万/30万/100万/1000万/1亿；Discogs 200/1千/3千/1.5万/5万（want/have≥0.6 +1）；RYM 100/500/1500/5千/2万；Genius 1万/5万/20万/100万/500万。",
   };
 }
 

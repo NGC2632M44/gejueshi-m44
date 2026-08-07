@@ -68,7 +68,7 @@ body{
 .cover-top .brand b{color:var(--accent);font-weight:400}
 .cover-top .date{font:10px var(--f-mono);letter-spacing:2px;color:rgba(243,238,226,.6);text-align:right;line-height:1.9}
 .sleeve-zone{flex:1;display:flex;align-items:center;justify-content:center;padding:0;min-height:0}
-.sleeve{width:252px;height:252px;position:relative;background-size:cover;background-position:center;
+.sleeve{width:288px;height:288px;position:relative;background-size:cover;background-position:center;
   border:1px solid rgba(243,238,226,.28);
   box-shadow:0 36px 80px -16px rgba(0,0,0,.85), 0 0 0 8px rgba(243,238,226,.05);
   animation:sleeveIn 1s cubic-bezier(.22,1,.36,1) both}
@@ -120,13 +120,13 @@ body{
 .data-cell .s{font:9px var(--f-mono);color:rgba(243,238,226,.42);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .data-cell.heat-cell .v{font:700 19px var(--f-mono);color:var(--gold);letter-spacing:1.5px}
 .data-cell.heat-cell .s{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font:10px/1.45 var(--f-mono);color:rgba(243,238,226,.65)}
-.data-block{margin-top:6px}
-.data-block-title{font:9px var(--f-mono);letter-spacing:3px;color:rgba(201,162,77,.85);margin-bottom:1px}
-.data-sub{font:9px var(--f-mono);letter-spacing:2px;color:rgba(243,238,226,.45);margin:2px 0 1px}
-.data-list{display:grid;grid-template-columns:1fr 1fr;gap:2px 18px}
-.drow{display:flex;align-items:baseline;gap:8px;font:11px/1.5 var(--f-serif);color:rgba(243,238,226,.8)}
+.data-block{margin-top:4px}
+.data-block-title{font:10px var(--f-mono);letter-spacing:2px;color:rgba(201,162,77,.85);margin-bottom:1px}
+.data-sub{font:10px var(--f-mono);letter-spacing:2px;color:rgba(243,238,226,.45);margin:2px 0 1px}
+.data-list{display:grid;grid-template-columns:1fr 1fr;gap:1px 14px}
+.drow{display:flex;align-items:baseline;gap:8px;font:17px/1.35 var(--f-serif);color:rgba(243,238,226,.82)}
 .drow .dk{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.drow .dv{font:11px var(--f-mono);color:var(--gold);white-space:nowrap}
+.drow .dv{font:16px var(--f-mono);color:var(--gold);white-space:nowrap}
 .data-foot{display:flex;justify-content:space-between;align-items:center;padding:10px 44px 14px;
   border-top:1px solid rgba(243,238,226,.16);font:9px var(--f-mono);letter-spacing:2px;color:rgba(243,238,226,.5)}
 /* ========== P2 Radar (Douyin-friendly) ========== */
@@ -142,7 +142,7 @@ body{
 .r-head .tot .n{font:900 50px/1 var(--f-serif);color:var(--accent)}
 .r-head .tot .n em{font:13px var(--f-mono);font-style:normal;color:var(--ink-3)}
 .r-head .tot .l{font:11px var(--f-mono);letter-spacing:3px;color:var(--ink-3)}
-.radar-zone{flex:1;display:flex;flex-direction:column;justify-content:center;padding:2px 40px 0;min-height:0;position:relative;z-index:2}
+.radar-zone{flex:1;display:flex;flex-direction:column;justify-content:center;padding:0 40px 0;min-height:0;position:relative;z-index:2}
 .radar-box{display:flex;justify-content:center;align-items:center}
 .radar-svg .grid{stroke:var(--line);fill:none}
 .radar-svg .axis{stroke:var(--line-soft)}
@@ -150,21 +150,21 @@ body{
 .radar-svg .dot{fill:var(--accent)}
 .radar-svg .lab{font-family:var(--f-sans);font-weight:500;font-size:15px;fill:var(--ink-2)}
 .radar-svg .lab .lv{font-weight:700;fill:var(--ink);font-size:16px}
-.mini-scores{display:flex;justify-content:center;gap:10px;margin-top:6px;flex-wrap:wrap}
+.mini-scores{display:flex;justify-content:center;gap:10px;margin-top:4px;flex-wrap:wrap}
 .mini{display:flex;align-items:baseline;gap:9px;border:1px solid var(--line);border-radius:99px;padding:9px 18px}
 .mini b{font:900 22px/1 var(--f-serif)}
 .mini span{font:11px var(--f-mono);letter-spacing:2px;color:var(--ink-3);text-transform:uppercase}
 .mini i{font:700 19px var(--f-mono);font-style:normal}
 .mini.hot{border-color:var(--accent)}
 .mini.hot i{color:var(--accent)}
-.r-verdict{text-align:center;padding:8px 60px 16px;position:relative;z-index:2;flex-shrink:0}
+.r-verdict{text-align:center;padding:6px 60px 12px;position:relative;z-index:2;flex-shrink:0}
 .r-verdict .vo{font:600 22px/1.4 var(--f-serif);color:var(--ink);
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .r-verdict .vo::before{content:"「";color:var(--accent)}
 .r-verdict .vo::after{content:"」";color:var(--accent)}
-.r-verdict .heat{margin-top:8px;font:14px var(--f-mono);color:var(--gold);letter-spacing:2px}
+.r-verdict .heat{margin-top:6px;font:14px var(--f-mono);color:var(--gold);letter-spacing:2px}
 .r-verdict .heat small{font-size:12px;color:var(--ink-3);letter-spacing:2px;margin-left:8px}
-.r-verdict .brand{margin-top:10px;font:10px var(--f-mono);letter-spacing:3px;color:var(--ink-3)}
+.r-verdict .brand{margin-top:8px;font:10px var(--f-mono);letter-spacing:3px;color:var(--ink-3)}
 
 /* ========== P3..P7 Dimension pages ========== */
 .p-dim{height:750px;display:flex;flex-direction:column}
@@ -498,17 +498,17 @@ function renderDataPage(data) {
     '<div class="data-cell heat-cell"><span class="k">' + hk + '</span><span class="v">' + escapeHTML(hv) + '</span><span class="s">' + escapeHTML(hd) + '</span></div>';
   const heatCells = heatCell("DOMESTIC HEAT", heatDom.label || "☆☆☆☆☆", heatDom.detail || "N/A") +
     heatCell("OVERSEAS HEAT", heatIntl.label || "○○○○○", heatIntl.detail || "N/A");
-  const chartsHtml = (dp.charts || []).slice(0, 5).map(c =>
+  const chartsHtml = (dp.charts || []).slice(0, 4).map(c =>
     '<div class="drow"><span class="dk">' + escapeHTML(c.chart) + '</span><span class="dv">#' + escapeHTML(c.peak) + '</span></div>'
   ).join("");
-  const yearHtml = (dp.yearEnd || []).slice(0, 4).map(y =>
+  const yearHtml = (dp.yearEnd || []).slice(0, 3).map(y =>
     '<div class="drow"><span class="dk">' + escapeHTML(y.publication + (y.list ? " — " + y.list : "")) + '</span><span class="dv">' + (y.rank ? '#' + escapeHTML(y.rank) : "—") + '</span></div>'
   ).join("");
   const ratings = dp.ratings || { aggregate: [], reviews: [] };
   const aggHtml = (ratings.aggregate || []).map(r =>
     '<div class="drow"><span class="dk">' + escapeHTML(r.source) + '</span><span class="dv">' + escapeHTML(r.rating) + '</span></div>'
   ).join("");
-  const revHtml = (ratings.reviews || []).slice(0, 6).map(r =>
+  const revHtml = (ratings.reviews || []).slice(0, 5).map(r =>
     '<div class="drow"><span class="dk">' + escapeHTML(r.source) + '</span><span class="dv">' + escapeHTML(r.rating) + '</span></div>'
   ).join("");
   const credits = dp.credits;
@@ -568,7 +568,7 @@ function renderRadarPage(data) {
       '<div class="tot"><div class="n">' + (data.totalScore ?? "—") + '<em>/' + full + '</em></div><div class="l">TOTAL 总分</div></div>' +
     '</header>' +
     '<div class="radar-zone">' +
-      '<div class="radar-box">' + renderRadar(data.scores, 390) + '</div>' +
+      '<div class="radar-box">' + renderRadar(data.scores, 410) + '</div>' +
       '<div class="mini-scores">' + minis + '</div>' +
     '</div>' +
     '<div class="r-verdict">' +
