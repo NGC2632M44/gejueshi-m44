@@ -33,3 +33,12 @@ test("MIR cache key includes song and artist identity to avoid cross-song collis
   assert.match(a, /wet/);
   assert.match(b, /summer/);
 });
+
+
+test("song identity filter rejects external results from another song", async () => {
+  const mod = await import("./mir-cross-ref.js");
+  const wetWild = { track_name: "Wet & Wild", artist_name: "Rose Gray" };
+  assert.equal(mod.songIdentityMatches(wetWild, { songTitle: "Summer Fling", artistName: "Leroy" }), false);
+  assert.equal(mod.songIdentityMatches(wetWild, { songTitle: "Wet & Wild", artistName: "Rose Gray" }), true);
+  assert.equal(mod.songIdentityMatches({ track_name: "Summer Fling", artist_name: "leroy" }, { songTitle: "Summer Fling", artistName: "Leroy" }), true);
+});

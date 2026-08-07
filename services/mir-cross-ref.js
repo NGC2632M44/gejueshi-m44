@@ -117,26 +117,32 @@ async function queryHookTheory(query, songTitle, artistName) {
   if (!artist || !title) return null;
 
   const url = `https://www.hooktheory.com/theorytab/view/${_slugifyPart(artist)}/${_slugifyPart(title)}`;
-  try {
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; Gejueshi-MIR/3.3; +http://localhost:3001)",
-        "Accept": "text/html,application/xhtml+xml",
-      },
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!res.ok) return null;
-    const parsedData = parseHookTheoryHtml(await res.text());
-    return parsedData ? {
-      ...parsedData,
-      url,
-      track_name: title,
-      artist_name: artist,
-    } : null;
-  } catch (e) {
-    console.log(`   ⚠️ Hooktheory: ${e.message}`);
-    return null;
+  const headers = {
+    "User-Agent": "Mozilla/5.0 (compatible; Gejueshi-MIR/3.3; +http://localhost:3001)",
+    "Accept": "text/html,application/xhtml+xml",
+  };
+  const attempts = [
+    () => fetch(url, { headers, signal: AbortSignal.timeout(15000) }),
+    () => smartFetch(url, { headers, signal: AbortSignal.timeout(15000) }),
+  ];
+  for (const fn of attempts) {
+    try {
+      const res = await fn();
+      if (!res.ok) continue; // 404 = 无此曲目 Tab → no_data，不当作“挂了”
+      const parsedData = parseHookTheoryHtml(await res.text());
+      if (parsedData) {
+        return {
+          ...parsedData,
+          url,
+          track_name: title,
+          artist_name: artist,
+        };
+      }
+    } catch (e) {
+      console.log(`   ⚠️ Hooktheory: ${e.message}`);
+    }
   }
+  return null;
 }
 
 function topChordProgression(localResult) {
@@ -150,6 +156,30 @@ function topChordProgression(localResult) {
   }
   const top = [...w.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k]) => k);
   return top.length ? top.join("-") : null;
+}
+
+/**
+ * 防串歌：外部源返回的歌曲名/艺人必须与当前查询身份一致才参与交叉验证。
+ * （不匹配的来源标记为 no_match，防止上一首歌/同名歌污染本次结果）
+ */
+function _songIdentityMatches(ext, opts) {
+  if (!opts?.songTitle && !opts?.artistName) return true;
+  const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, "");
+  const qTitle = norm(opts.songTitle);
+  const qArtist = norm(opts.artistName);
+  if (qArtist && ext.artist_name) {
+    const a = norm(ext.artist_name);
+    if (!a.includes(qArtist) && !qArtist.includes(a)) return false;
+  }
+  if (qTitle && ext.track_name) {
+    const t = norm(ext.track_name);
+    if (!t.includes(qTitle) && !qTitle.includes(t)) return false;
+  }
+  return true;
+}
+
+export function songIdentityMatches(ext, opts) {
+  return _songIdentityMatches(ext, opts);
 }
 
 /**
@@ -214,14 +244,30 @@ async function querySongBPMAPI(query, apiKey, songTitle, artistName) {
   const parsed = _parseTrackQuery(query);
   const title = songTitle || parsed?.title || query;
   const artist = artistName || parsed?.artist || null;
-  try {
-    const url = `https://api.getsongbpm.com/search/?api_key=${encodeURIComponent(apiKey)}&type=song&lookup=${encodeURIComponent(title)}`;
-    const res = await proxiedFetch(url, {
-      headers: { "User-Agent": UA, "Referer": "https://getsongbpm.com/" },
-      signal: AbortSignal.timeout(12000),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
+  const url = `https://api.getsongbpm.com/search/?api_key=${encodeURIComponent(apiKey)}&type=song&lookup=${encodeURIComponent(title)}`;
+  const headers = { "User-Agent": UA, "Referer": "https://getsongbpm.com/" };
+  const attempts = [
+    () => proxiedFetch(url, { headers, signal: AbortSignal.timeout(12000) }),
+    () => smartFetch(url, { headers, signal: AbortSignal.timeout(12000) }),
+  ];
+  let data = null;
+  for (const fn of attempts) {
+    try {
+      const res = await fn();
+      if (!res.ok) throw new Error(`SongBPM API HTTP ${res.status}`);
+      const text = await res.text();
+      try {
+        data = JSON.parse(text);
+      } catch (_) {
+        throw new Error("SongBPM API 返回非 JSON（可能被 Cloudflare 拦截）");
+      }
+      if (data) break;
+    } catch (e) {
+      console.log(`   ♪ SongBPM API: ${e.message}`);
+      if (fn === attempts[attempts.length - 1]) throw e;
+    }
+  }
+  if (data) {
     const results = Array.isArray(data.search) ? data.search : [];
     if (!results.length) return null;
 
@@ -241,10 +287,8 @@ async function querySongBPMAPI(query, apiKey, songTitle, artistName) {
       track_name: hit.title || null,
       artist_name: hit.artist?.name || null,
     };
-  } catch (e) {
-    console.log(`   ♪ SongBPM API: ${e.message}`);
-    return null;
   }
+  return null;
 }
 
 async function querySongBPM(query, apiKey, songTitle, artistName) {
@@ -296,20 +340,23 @@ export async function mirCrossReference(query, localResult, opts = {}) {
     queryMusicBrainz(query),
   ]);
 
-  // Hooktheory
-  if (hooktheory.value) {
-    sources.push({ name: "hooktheory", status: "ok" });
-    external.push(hooktheory.value);
-  } else {
-    sources.push({ name: "hooktheory", status: "no_data" });
+  // 防串歌：先收齐外部结果，再按歌曲/艺人身份过滤
+  const externalAll = [];
+  if (hooktheory.value) externalAll.push(hooktheory.value);
+  if (songbpm.value) externalAll.push(songbpm.value);
+  for (const e of externalAll) {
+    if (_songIdentityMatches(e, opts)) external.push(e);
   }
+  const htIn = hooktheory.value && external.includes(hooktheory.value);
+  const sbIn = songbpm.value && external.includes(songbpm.value);
 
-  // SongBPM — 官方 API（部分歌曲未收录 → no_data；手动 URL 另行校验）
-  if (songbpm.value) {
+  sources.push({ name: "hooktheory", status: htIn ? "ok" : (hooktheory.value ? "no_match" : (hooktheory.reason ? "error" : "no_data")) });
+  if (sbIn) {
     sources.push({ name: "songbpm", status: "ok" });
-    external.push(songbpm.value);
   } else if (!songbpmApiKey) {
     sources.push({ name: "songbpm", status: "no_config" });
+  } else if (songbpm.value) {
+    sources.push({ name: "songbpm", status: "no_match" });
   } else if (songbpm.reason) {
     sources.push({ name: "songbpm", status: "error" });
   } else {
