@@ -330,6 +330,12 @@ details.manual .tip{font:11px/1.7 var(--f-sans);color:var(--ink-3);margin:10px 0
           <span class="inline-status" id="research-status"></span>
         </div>
         <div class="badges" id="rating-strip" style="display:none"></div>
+        <div class="charts-review" id="charts-review" style="display:none;margin-top:10px;border:1px solid var(--gold);border-radius:8px;padding:10px 12px;background:rgba(201,162,77,.04)">
+          <div style="font:10px var(--f-mono);color:var(--gold);letter-spacing:2px;margin-bottom:4px">📊 榜单人工审核（卡片生成前请核对）</div>
+          <div style="font:10px/1.6 var(--f-sans);color:var(--ink-2);margin-bottom:8px">以下榜单自动抓自 Wikipedia。如果抓到的是错误专辑（上一首歌/同名专辑等），可以直接改、删或添加；修改后的榜单会用于卡片。</div>
+          <div id="charts-review-rows"></div>
+          <button class="btn-xs" onclick="addChartRow()">＋ 添加榜单</button>
+        </div>
         <div class="cover-preview" id="cover-preview" style="display:none">
           <img id="cover-img" alt="封面">
           <div class="info" id="cover-info"></div>
@@ -528,6 +534,7 @@ window._manualCoverUrl = null;
 window._originalCoverUrl = null;
 window._autoGenre = "";
 window._autoHeatData = {};
+window._chartsReview = null;
 const API = (location.port === "3001" || location.protocol === "file:") && location.port === "3001" ? "" : "http://localhost:3001";
 const DRAFT_KEY = "m44-draft-v5";
 
@@ -761,6 +768,7 @@ async function runAnalysis() {
       }
     }
     syncResearchQuery();
+    resetResearchIfSongChanged();
 
     setStatus("analyze-status", "✓ 分析完成", "ok");
     toast("音频分析完成", "ok");
@@ -1218,6 +1226,58 @@ async function refreshHeatFromManual() {
   } catch (_) {}
 }
 
+// ═══ 榜单人工审核：Wikipedia 自动抓取 → 可改/删/添加 → 用于卡片 ═══
+function renderChartsReview() {
+  const box = $("charts-review");
+  if (!box) return;
+  const auto = (researchData && researchData.wikiData && researchData.wikiData.charts) || [];
+  window._chartsReview = (Array.isArray(window._chartsReview)
+    ? window._chartsReview
+    : auto.map(c => ({ chart: c.chart || "", peak: c.peak != null ? String(c.peak) : "", url: c.url || null })));
+  const rows = $("charts-review-rows");
+  rows.innerHTML = window._chartsReview.map((c, i) =>
+    `<div style="display:flex;gap:6px;margin-bottom:4px;align-items:center">` +
+      `<input type="text" id="cr-name-${i}" value="${escapeHTML(c.chart)}" placeholder="榜单名（如 US Billboard 200）" oninput="updateChartRow(${i},'name')" style="flex:3;min-width:0">` +
+      `<input type="text" id="cr-peak-${i}" value="${escapeHTML(c.peak)}" placeholder="排名" oninput="updateChartRow(${i},'peak')" style="flex:0 0 72px">` +
+      `<button class="btn-xs" onclick="removeChartRow(${i})">删</button>` +
+    `</div>`
+  ).join("");
+  box.style.display = window._chartsReview.length ? "block" : "none";
+}
+
+function updateChartRow(i, field) {
+  if (!window._chartsReview[i]) return;
+  const id = field === "name" ? `cr-name-${i}` : `cr-peak-${i}`;
+  window._chartsReview[i][field === "name" ? "chart" : "peak"] = $(id).value.trim();
+}
+
+function removeChartRow(i) {
+  window._chartsReview.splice(i, 1);
+  renderChartsReview();
+}
+
+function addChartRow() {
+  window._chartsReview.push({ chart: "", peak: "" });
+  renderChartsReview();
+  const el = document.getElementById("cr-name-" + (window._chartsReview.length - 1));
+  if (el) el.focus();
+}
+
+// 换歌后若研究数据仍是上一首歌的，清空并提示重新搜索
+function resetResearchIfSongChanged() {
+  const song = $("online-song").value.trim().toLowerCase();
+  const artist = $("online-artist").value.trim().toLowerCase();
+  if (!song || !artist || !researchData) return;
+  const aggArtist = (researchData.aggregate && researchData.aggregate.artist || "").toLowerCase();
+  if (aggArtist && !aggArtist.includes(artist) && !artist.includes(aggArtist)) {
+    researchData = null;
+    window._chartsReview = null;
+    const box = $("charts-review"); if (box) box.style.display = "none";
+    const strip = $("rating-strip"); if (strip) strip.style.display = "none";
+    toast("研究数据属于上一首歌，已清空，请重新搜索", "warn");
+  }
+}
+
 async function runResearch() {
   const query = $("research-query").value.trim();
   if (!query) return toast("请输入专辑名 + 艺术家", "err");
@@ -1230,12 +1290,14 @@ async function runResearch() {
   platformRatings = {};
   window._heatData = {};
   window._autoHeatData = {};
+  window._chartsReview = null;
 
   try {
     const songParam = [$("online-song").value.trim(), $("online-artist").value.trim()].filter(Boolean).join(" ") || query;
     const admUrl = $("adm-url").value.trim();
     const res = await fetch(`${API}/api/research?q=${encodeURIComponent(query)}&song=${encodeURIComponent(songParam)}${admUrl ? `&admUrl=${encodeURIComponent(admUrl)}` : ""}`);
     researchData = await res.json();
+    renderChartsReview();
     const agg = researchData.aggregate || {};
     const researchErrors = (researchData.errors || []).filter(Boolean);
     strip.style.display = "flex";
@@ -1682,6 +1744,10 @@ function buildDataPage(af, heatScore, researchData, scores) {
   const chordSrc = (af && af.chord_source === "local_unverified") ? "sonara (local, unverified)" : "Hooktheory/SongBPM";
   add("Chord Progression", (af && af.chord_sequence) || null, chordSrc);
   const wd = (researchData && researchData.wikiData) || {};
+  // 榜单：人工审核区（可改/删/添加）优先；未人工审核时用 Wikipedia 自动值
+  let chartsSrc = null;
+  if (Array.isArray(window._chartsReview)) chartsSrc = window._chartsReview;
+  else if (Array.isArray(wd.charts) && wd.charts.length) chartsSrc = wd.charts;
   // PROFESSIONAL RATINGS：Wikipedia 乐评表 + AnyDecentMusic（聚合 + 全部媒体评分）
   const ratings = { aggregate: [], reviews: [] };
   const adm = researchData && researchData.anyDecentMusic;
@@ -1709,7 +1775,7 @@ function buildDataPage(af, heatScore, researchData, scores) {
   return {
     params,
     heat: heatScore || null,
-    charts: (Array.isArray(wd.charts) && wd.charts.length) ? sortChartsByInfluence(wd.charts) : null,
+    charts: chartsSrc ? sortChartsByInfluence(chartsSrc) : null,
     yearEnd: (Array.isArray(wd.yearEnd) && wd.yearEnd.length) ? wd.yearEnd : null,
     ratings: (ratings.aggregate.length || ratings.reviews.length) ? ratings : null,
     credits: wd.credits || null,
@@ -2238,6 +2304,7 @@ function onAudioSelect() {
       $("online-song").value = guessSearchQueryFromFilename(fn);
     }
     syncResearchQuery();
+    resetResearchIfSongChanged();
   }
 }
 
