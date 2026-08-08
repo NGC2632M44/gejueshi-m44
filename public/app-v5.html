@@ -348,9 +348,9 @@ details.manual .tip{font:11px/1.7 var(--f-sans);color:var(--ink-3);margin:10px 0
             <div class="tip">接口找不到的平台请点 ↗ 手动搜索并填写；留空表示“无此维度数据”，不会当作 0 参与评分。</div>
             <div class="row">
               <div class="field"><label>RYM 专辑评分 /5 <a href="#" onclick="openPlatformSearch('https://rateyourmusic.com/search?searchterm=')">↗</a></label><input type="text" id="plat-rym-album" placeholder="3.88"></div>
-              <div class="field"><label>RYM 专辑人数</label><input type="text" id="plat-rym-album-count" placeholder="1500"></div>
+              <div class="field"><label>RYM 专辑人数</label><input type="text" id="plat-rym-album-count" placeholder="1500" oninput="refreshHeatFromManual(); saveDraft()"></div>
               <div class="field"><label>RYM 单曲评分 /5 <a href="#" onclick="openPlatformSearch('https://rateyourmusic.com/search?searchterm=')">↗</a></label><input type="text" id="plat-rym-song" placeholder="3.5"></div>
-              <div class="field"><label>RYM 单曲人数</label><input type="text" id="plat-rym-song-count" placeholder="300"></div>
+              <div class="field"><label>RYM 单曲人数</label><input type="text" id="plat-rym-song-count" placeholder="300" oninput="refreshHeatFromManual(); saveDraft()"></div>
             </div>
             <div class="row">
               <div class="field"><label>RYM 流派（会自动填入 Step 4 的流派，留空则用自动搜索的流派）</label><input type="text" id="plat-rym-genres" placeholder="Indie Rock, Garage Rock" oninput="syncGenreFromRYM(); saveDraft()"></div>
@@ -370,17 +370,17 @@ details.manual .tip{font:11px/1.7 var(--f-sans);color:var(--ink-3);margin:10px 0
               <div class="field"><label>Dork /5 <a href="#" onclick="openPlatformSearch('https://readdork.com/?s=')">↗</a></label><input type="text" id="plat-dork" placeholder="4"></div>
             </div>
             <div class="row">
-              <div class="field"><label>QQ音乐 评论数 <a href="#" onclick="openPlatformSearch('https://y.qq.com/n/ryqq/search?w=')">↗</a></label><input type="text" id="plat-qq-comments" placeholder="133"></div>
+              <div class="field"><label>QQ音乐 评论数（手动填写后热度立即按此值重算）<a href="#" onclick="openPlatformSearch('https://y.qq.com/n/ryqq/search?w=')">↗</a></label><input type="text" id="plat-qq-comments" placeholder="133" oninput="refreshHeatFromManual(); saveDraft()"></div>
             </div>
             <div class="row">
-              <div class="field"><label>网易云 单曲评论数（留空=自动搜索）<a href="#" onclick="openPlatformSearch('https://music.163.com/#/search/m/?s=')">↗</a></label><input type="text" id="plat-netease-song-comments" placeholder="自动" oninput="saveDraft()"></div>
-              <div class="field"><label>网易云 专辑评论数（留空=自动搜索）</label><input type="text" id="plat-netease-album-comments" placeholder="自动" oninput="saveDraft()"></div>
-              <div class="field"><label>网易云 专辑收藏数（留空=自动搜索）</label><input type="text" id="plat-netease-album-collections" placeholder="自动" oninput="saveDraft()"></div>
+              <div class="field"><label>网易云 单曲评论数（留空=自动搜索）<a href="#" onclick="openPlatformSearch('https://music.163.com/#/search/m/?s=')">↗</a></label><input type="text" id="plat-netease-song-comments" placeholder="自动" oninput="refreshHeatFromManual(); saveDraft()"></div>
+              <div class="field"><label>网易云 专辑评论数（留空=自动搜索）</label><input type="text" id="plat-netease-album-comments" placeholder="自动" oninput="refreshHeatFromManual(); saveDraft()"></div>
+              <div class="field"><label>网易云 专辑收藏数（留空=自动搜索）</label><input type="text" id="plat-netease-album-collections" placeholder="自动" oninput="refreshHeatFromManual(); saveDraft()"></div>
             </div>
             <div class="row">
               <div class="field"><label>Spotify 热度 /100 <a href="#" onclick="openPlatformSearch('https://open.spotify.com/search/')">↗</a></label><input type="text" id="plat-spotify" placeholder="80"></div>
               <div class="field"><label>Apple Music /100 <a href="#" onclick="openPlatformSearch('https://music.apple.com/us/search?term=')">↗</a></label><input type="text" id="plat-apple" placeholder="—"></div>
-              <div class="field"><label>YouTube 播放量 <a href="#" onclick="openPlatformSearch('https://www.youtube.com/results?search_query=')">↗</a></label><input type="text" id="plat-youtube" placeholder="120000"></div>
+              <div class="field"><label>YouTube 播放量（留空=自动；自动爬取错误可直接改）<a href="#" onclick="openPlatformSearch('https://www.youtube.com/results?search_query=')">↗</a></label><input type="text" id="plat-youtube" placeholder="120000" oninput="refreshHeatFromManual(); saveDraft()"></div>
             </div>
           </div>
         </details>
@@ -527,6 +527,7 @@ window._heatData = {};
 window._manualCoverUrl = null;
 window._originalCoverUrl = null;
 window._autoGenre = "";
+window._autoHeatData = {};
 const API = (location.port === "3001" || location.protocol === "file:") && location.port === "3001" ? "" : "http://localhost:3001";
 const DRAFT_KEY = "m44-draft-v5";
 
@@ -1168,6 +1169,55 @@ function syncGenreFromRYM() {
   }
 }
 
+// 手动平台数据覆盖（自动爬取错误时用手动值修正热度）
+function collectManualHeatOverrides() {
+  const o = {};
+  const num = (id) => {
+    const v = parseInt($(id).value, 10);
+    return Number.isFinite(v) && v >= 0 ? v : null;
+  };
+  const qq = num("plat-qq-comments");
+  if (qq != null) o.qq_music_comments = qq;
+  const neS = num("plat-netease-song-comments");
+  if (neS != null) o.netease_song_comments = neS;
+  const neA = num("plat-netease-album-comments");
+  if (neA != null) o.netease_album_comments = neA;
+  const neC = num("plat-netease-album-collections");
+  if (neC != null) o.netease_album_collections = neC;
+  const yt = num("plat-youtube");
+  if (yt != null) o.youtube_views = yt;
+  const rymA = num("plat-rym-album-count");
+  const rymS = num("plat-rym-song-count");
+  if (rymA != null || rymS != null) o.rym_rating_count = rymA || rymS;
+  return o;
+}
+
+// 用“自动爬取 + 当前手动输入”重新计算热度，并刷新 Step2 徽章
+async function refreshHeatFromManual() {
+  const heat = { ...(window._autoHeatData || {}), ...collectManualHeatOverrides() };
+  window._heatData = heat;
+  try {
+    const r = await fetch(`${API}/api/heat`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ heat }),
+    });
+    const hs = await r.json();
+    window._heatScore = hs;
+    const upd = (id, h, label) => {
+      const el = document.getElementById(id);
+      if (h && h.stars) {
+        const html = badge(label, h.label, "").replace('<div class="badge">', '<div class="badge" id="' + id + '">');
+        if (el) el.outerHTML = html; else document.getElementById("rating-strip").insertAdjacentHTML("beforeend", html);
+      } else if (el) {
+        el.remove();
+      }
+    };
+    upd("heat-badge-dom", hs.domestic, "国内热度");
+    upd("heat-badge-intl", hs.international, "国外热度");
+  } catch (_) {}
+}
+
 async function runResearch() {
   const query = $("research-query").value.trim();
   if (!query) return toast("请输入专辑名 + 艺术家", "err");
@@ -1179,6 +1229,7 @@ async function runResearch() {
   markStep(2, "active", "搜索中");
   platformRatings = {};
   window._heatData = {};
+  window._autoHeatData = {};
 
   try {
     const songParam = [$("online-song").value.trim(), $("online-artist").value.trim()].filter(Boolean).join(" ") || query;
@@ -1307,6 +1358,8 @@ async function runResearch() {
       // Genius 只用于歌词链（LRCLIB → Genius 页面解析 → 网易云），不在 Step2 展示链接
 
       // 国内★/国外● 热度分级（透明阈值，见 /api/heat）
+      // 自动爬取值单独存档，手动修正后生成卡片时以“自动 + 手动”重新计算
+      window._autoHeatData = { ...window._heatData };
       try {
         const hsRes = await fetch(`${API}/api/heat`, {
           method: "POST",
@@ -1315,8 +1368,8 @@ async function runResearch() {
         });
         const hs = await hsRes.json();
         window._heatScore = hs;
-        if (hs.domestic && hs.domestic.stars) strip.innerHTML += badge("国内热度", hs.domestic.label, "");
-        if (hs.international && hs.international.stars) strip.innerHTML += badge("国外热度", hs.international.label, "");
+        if (hs.domestic && hs.domestic.stars) strip.innerHTML += badge("国内热度", hs.domestic.label, "").replace('<div class="badge">', '<div class="badge" id="heat-badge-dom">');
+        if (hs.international && hs.international.stars) strip.innerHTML += badge("国外热度", hs.international.label, "").replace('<div class="badge">', '<div class="badge" id="heat-badge-intl">');
       } catch (_) {}
 
       // 自动补全 Step4：单曲名/艺人优先，专辑名取主专辑（与 Step2 搜索联动）
@@ -1722,17 +1775,10 @@ async function runScoring(useFinalWord) {
   if (dorkVal) pr.dork = {score: dorkVal, max: 5};
   if (spotifyVal != null) pr.spotify = {score: spotifyVal, max: 100};
   if (appleVal != null) pr.apple = {score: appleVal, max: 100};
-  if (youtubeVal != null) { pr.youtube = {score: youtubeVal}; window._heatData.youtube_views = youtubeVal; }
+  if (youtubeVal != null) pr.youtube = { score: youtubeVal };
 
-  if (qqComments) window._heatData.qq_music_comments = qqComments;
-  if (rymAlbumCount || rymSongCount) window._heatData.rym_rating_count = rymAlbumCount || rymSongCount;
-  // 网易云手动修正：留空则使用自动搜索值
-  const neSongManual = parseInt($("plat-netease-song-comments").value);
-  const neAlbumManual = parseInt($("plat-netease-album-comments").value);
-  const neCollectManual = parseInt($("plat-netease-album-collections").value);
-  if (Number.isFinite(neSongManual)) window._heatData.netease_song_comments = neSongManual;
-  if (Number.isFinite(neAlbumManual)) window._heatData.netease_album_comments = neAlbumManual;
-  if (Number.isFinite(neCollectManual)) window._heatData.netease_album_collections = neCollectManual;
+  // 热度统一以“自动爬取 + 当前手动输入”为准（自动爬取错误时手动修正立即生效）
+  window._heatData = { ...(window._autoHeatData || {}), ...collectManualHeatOverrides() };
 
   const metadata = {
     artist: $("meta-artist").value.trim(),
@@ -2048,10 +2094,12 @@ async function generateCardFromDraft(finalScores) {
   if (manualBtn) manualBtn.disabled = true;
   const draft = window._cardDraft;
   if (!draft) return;
-  const { metadata, correctedAF, researchData, rymGenres, heatData, albumName } = draft;
+  const { metadata, correctedAF, researchData, rymGenres, albumName } = draft;
   busy("score-status", "渲染卡片中…");
   try {
-    // 重新计算热度（含手动补充的 QQ 评论 / RYM 人数）
+    // 热度以“自动爬取 + 当前手动输入”重新计算，手动修正立即生效
+    const heatData = { ...(window._autoHeatData || {}), ...collectManualHeatOverrides() };
+    window._heatData = heatData;
     try {
       const hsRes = await fetch(`${API}/api/heat`, {
         method: "POST",
