@@ -747,34 +747,60 @@ export async function fetchGeniusLyrics(url) {
 export async function fetchYouTubeStats(query, apiKey) {
   if (!apiKey) return null;
   try {
-    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=5&q=${encodeURIComponent(query)}&key=${apiKey}`;
+    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=20&q=${encodeURIComponent(query)}&key=${apiKey}`;
     const res = await proxyFetch(searchUrl, { signal: AbortSignal.timeout(T) });
     if (!res.ok) return null;
     const data = await res.json();
     const items = data?.items || [];
     if (!items.length) return null;
 
-    const ids = items.map((i) => i.id?.videoId).filter(Boolean).slice(0, 5);
+    const ids = items.map((i) => i.id?.videoId).filter(Boolean).slice(0, 20);
     if (!ids.length) return null;
 
     const statsRes = await proxyFetch(
-      `https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${ids.join(",")}&key=${apiKey}`,
+      `https://www.googleapis.com/youtube/v3/videos?part=statistics,contentDetails&id=${ids.join(",")}&key=${apiKey}`,
       { signal: AbortSignal.timeout(T) }
     );
     if (!statsRes.ok) return null;
     const statsData = await statsRes.json();
     const statsMap = new Map(
-      (statsData?.items || []).map((x) => [x.id, x.statistics || {}])
+      (statsData?.items || []).map((x) => [x.id, { ...(x.statistics || {}), duration: x.contentDetails?.duration || null }])
     );
     const toNum = (v) => (v != null && v !== "" ? Number(v) : null);
+    const isoToSec = (iso) => {
+      if (!iso) return null;
+      const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+      if (!m) return null;
+      return (parseInt(m[1] || 0, 10) * 3600) + (parseInt(m[2] || 0, 10) * 60) + parseInt(m[3] || 0, 10);
+    };
+    const normTxt = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, " ");
+    const qTokens = normTxt(query).split(/\s+/).filter((w) => w.length > 2);
 
     const ranked = items.map((item) => {
       const title = item.snippet?.title || "";
+      const channel = item.snippet?.channelTitle || "";
+      const stat = statsMap.get(item.id?.videoId) || {};
+      const views = toNum(stat.viewCount) || 0;
+      const durSec = isoToSec(stat.duration);
       let score = 0;
+      // 身份：标题/频道与查询词匹配
+      const hay = normTxt(title + " " + channel);
+      const tokensHit = qTokens.filter((w) => hay.includes(w)).length;
+      score += tokensHit * 25;
+      if (tokensHit < Math.max(1, Math.floor(qTokens.length * 0.6))) score -= 30;
+      // 官方形态
       if (/official|visuali[sz]er|\baudio\b|lyric/i.test(title)) score += 30;
-      if (/remix|live|cover|acoustic|reaction|interview/i.test(title)) score -= 20;
-      const views = toNum(statsMap.get(item.id?.videoId)?.viewCount) || 0;
-      if (views >= 100000) score += 20;
+      // 频道：含艺人名/VEVO 优先
+      if (channel && qTokens.some((w) => channel.toLowerCase().includes(w))) score += 40;
+      if (/vevo/i.test(channel)) score += 15;
+      // 排除形态
+      if (/remix|live|cover|acoustic|reaction|interview|#shorts|shorts/i.test(title)) score -= 30;
+      // 排除 Shorts（<60s）与超长视频（>30min）
+      if (durSec != null && durSec < 60) score -= 80;
+      if (durSec != null && durSec > 1800) score -= 50;
+      // 播放量加分
+      if (views >= 1000000) score += 25;
+      else if (views >= 100000) score += 20;
       else if (views >= 10000) score += 10;
       return { item, score, views };
     }).sort((a, b) => b.score - a.score || b.views - a.views);

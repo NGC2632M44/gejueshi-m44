@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.29.10] - 2026-08-08
+
+### Fixed
+- YouTube 播放量选错视频（如 89 播放）：
+  - 搜索候选从 5 条扩到 20 条；
+  - 按“标题/频道与歌曲名+艺人匹配、官方/Visualiser/Audio/Lyric 加权、
+    艺人频道/VEVO 加权、Remix/Live/Cover 降权、Shorts(<60s)与超长视频排除、
+    播放量分层加分”综合排序；
+  - 实测：Charli XCX Camera → 官方视频 4.79M；Rose Gray Wet & Wild →
+    官方 Visualiser 355K；Leroy Summer Fling 无官方源时取最匹配上传 16.9K。
+
 ## [3.29.9] - 2026-08-08
 
 ### Fixed
