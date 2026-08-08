@@ -19,6 +19,20 @@ test("parses bpm 128 and key A minor from the real songbpm page", () => {
 });
 
 
+test("parses JSON-LD style BPM/key/mode as fallback", () => {
+  const parsed = parseSongBPMHtml('<html><script type="application/ld+json">{"bpm": 128, "key": "A", "mode": "minor"}</script></html>');
+  assert.equal(parsed.bpm, 128);
+  assert.equal(parsed.key, "A minor");
+});
+
+
+test("parses span.bpm class variant", () => {
+  const parsed = parseSongBPMHtml('<html><span class="bpm">128</span> <span>BPM</span> <dt>Key</dt><dd>A</dd> <p>key and a <span>minor</span> mode</p></html>');
+  assert.equal(parsed.bpm, 128);
+  assert.equal(parsed.key, "A minor");
+});
+
+
 test("querySongBPMByUrl is exported (endpoint import regression)", async () => {
   const mod = await import("./mir-cross-ref.js");
   assert.equal(typeof mod.querySongBPMByUrl, "function");

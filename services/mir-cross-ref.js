@@ -224,9 +224,15 @@ export function songIdentityMatches(ext, opts) {
  */
 export function parseSongBPMHtml(html) {
   const bpmMatch = html.match(/>\s*(\d+(?:\.\d+)?)\s*<span[^>]*>\s*BPM\s*</i)
-    || html.match(/Tempo \(BPM\)\s*<\/dt>\s*<dd[^>]*>\s*(\d+(?:\.\d+)?)\s*<\/dd>/i);
-  const keyMatch = html.match(/Key\s*<\/dt>\s*<dd[^>]*>\s*([A-G][#b]?)\s*<\/dd>/i);
-  const modeMatch = html.match(/key and a\s*<span[^>]*>\s*(major|minor)\s*<\/span>\s*mode/i);
+    || html.match(/Tempo \(BPM\)\s*<\/dt>\s*<dd[^>]*>\s*(\d+(?:\.\d+)?)\s*<\/dd>/i)
+    || html.match(/"bpm"\s*:\s*"?(\d+(?:\.\d+)?)/i)
+    || html.match(/<span[^>]*class="[^"]*bpm[^"]*"[^>]*>\s*(\d+(?:\.\d+)?)\s*<\/span>/i)
+    || html.match(/(\d+(?:\.\d+)?)\s*(?:<span[^>]*>\s*)?BPM/i);
+  const keyMatch = html.match(/Key\s*<\/dt>\s*<dd[^>]*>\s*([A-G][#b]?)\s*<\/dd>/i)
+    || html.match(/"key"\s*:\s*"([A-G][#b]?)/i);
+  const modeMatch = html.match(/key and a\s*<span[^>]*>\s*(major|minor)\s*<\/span>\s*mode/i)
+    || html.match(/"mode"\s*:\s*"(major|minor)"/i)
+    || html.match(/(?:key of|in)\s+[A-G][#b]?\s*(major|minor)/i);
 
   const bpm = bpmMatch ? parseFloat(bpmMatch[1]) : null;
   let key = null;
@@ -255,18 +261,23 @@ export async function querySongBPMByUrl(songbpmUrl) {
     () => fetch(songbpmUrl, { headers, signal: AbortSignal.timeout(12000) }),
     () => smartFetch(songbpmUrl, { headers, signal: AbortSignal.timeout(12000) }),
   ];
+  let lastError = null;
   for (const fn of attempts) {
     try {
       const res = await fn();
       if (res.ok) {
         const html = await res.text();
-        return { ...parseSongBPMHtml(html), url: songbpmUrl };
+        const parsed = parseSongBPMHtml(html);
+        if (parsed.bpm || parsed.key) return { ...parsed, url: songbpmUrl };
+        return { error: "no_data", detail: "页面可访问，但未解析到 BPM/Key（可能不是歌曲详情页）" };
       }
+      lastError = `HTTP ${res.status}`;
     } catch (e) {
       console.log(`   ⚠️ SongBPM: ${e.message}`);
+      lastError = e.message;
     }
   }
-  return null;
+  return { error: "fetch_failed", detail: lastError || "网络请求失败（可能被 Cloudflare 拦截）" };
 }
 
 /**

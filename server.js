@@ -1192,10 +1192,15 @@ app.post("/api/songbpm-url", async (req, res) => {
   try {
     const { querySongBPMByUrl } = await import("./services/mir-cross-ref.js");
     const result = await querySongBPMByUrl(url);
-    if (result) {
+    if (result && (result.bpm || result.key)) {
       res.json({ success: true, ...result });
     } else {
-      res.json({ success: false, error: "无法解析该页面" });
+      const reason = result?.error === "no_data"
+        ? "页面可访问但未找到 BPM/Key，请确认是 songbpm.com 的歌曲详情页（形如 /@artist/title-xxxx）"
+        : result?.error === "fetch_failed"
+          ? `页面抓取失败（${result.detail || "可能被 Cloudflare 拦截"}）`
+          : "无法解析该页面";
+      res.json({ success: false, error: reason });
     }
   } catch (e) {
     res.json({ success: false, error: e.message });

@@ -353,7 +353,7 @@ details.manual .tip{font:11px/1.7 var(--f-sans);color:var(--ink-3);margin:10px 0
               <div class="field"><label>RYM 单曲人数</label><input type="text" id="plat-rym-song-count" placeholder="300"></div>
             </div>
             <div class="row">
-              <div class="field"><label>RYM 流派</label><input type="text" id="plat-rym-genres" placeholder="Indie Rock, Garage Rock"></div>
+              <div class="field"><label>RYM 流派（会自动填入 Step 4 的流派，留空则用自动搜索的流派）</label><input type="text" id="plat-rym-genres" placeholder="Indie Rock, Garage Rock" oninput="syncGenreFromRYM(); saveDraft()"></div>
               <div class="field"><label>AOTY 专辑用户 /100 <a href="#" onclick="openPlatformSearch('https://www.albumoftheyear.org/search.php?q=')">↗</a></label><input type="text" id="plat-aoty-album" placeholder="85"></div>
               <div class="field"><label>AOTY 专辑乐评 /100</label><input type="text" id="plat-aoty-critic" placeholder="76"></div>
               <div class="field"><label>AOTY 单曲用户 /100 <a href="#" onclick="openPlatformSearch('https://www.albumoftheyear.org/search.php?q=')">↗</a></label><input type="text" id="plat-aoty-song" placeholder="80"></div>
@@ -525,6 +525,7 @@ let researchData = null;
 window._heatData = {};
 window._manualCoverUrl = null;
 window._originalCoverUrl = null;
+window._autoGenre = "";
 const API = (location.port === "3001" || location.protocol === "file:") && location.port === "3001" ? "" : "http://localhost:3001";
 const DRAFT_KEY = "m44-draft-v5";
 
@@ -1154,6 +1155,16 @@ function renderStep2Sources(researchData, cn) {
   }
 }
 
+// RYM 流派优先填入 Step 4 流派；RYM 留空则回退到自动搜索的流派
+function syncGenreFromRYM() {
+  const rym = $("plat-rym-genres").value.trim();
+  if (rym) {
+    $("meta-genre").value = rym;
+  } else if (window._autoGenre) {
+    $("meta-genre").value = window._autoGenre;
+  }
+}
+
 async function runResearch() {
   const query = $("research-query").value.trim();
   if (!query) return toast("请输入专辑名 + 艺术家", "err");
@@ -1210,7 +1221,11 @@ async function runResearch() {
     if (agg.title && !$("meta-album").value) $("meta-album").value = agg.title; // 专辑名默认带出
     if (agg.date && !$("meta-year").value) $("meta-year").value = agg.date.slice(0,4);
     if (agg.labels && agg.labels.length && !$("meta-label").value) $("meta-label").value = agg.labels[0];
-    if (agg.tags && agg.tags.length && !$("meta-genre").value) $("meta-genre").value = agg.tags.slice(0,4).join(", ");
+    // 流派自动填写：RYM 流派优先；RYM 留空才用自动搜索的流派
+    window._autoGenre = (agg.tags && agg.tags.length) ? agg.tags.slice(0, 4).join(", ") : "";
+    const rymGenreNow = $("plat-rym-genres").value.trim();
+    if (rymGenreNow) $("meta-genre").value = rymGenreNow;
+    else if (window._autoGenre && !$("meta-genre").value) $("meta-genre").value = window._autoGenre;
     // Discogs（已实测 PAT）：评分 / 拥有 / 想要 + 厂牌修正 + 封面候选
     const dgTop = researchData.discogs?.results?.[0];
     if (dgTop) {
@@ -2266,6 +2281,7 @@ function autoFillAlbumMeta() {
   if (first.year && !$("meta-year").value) $("meta-year").value = first.year;
   if (first.label && !$("meta-label").value) $("meta-label").value = first.label;
   if (first.genre && !$("meta-genre").value) $("meta-genre").value = first.genre;
+  syncGenreFromRYM();
   saveDraft();
 }
 
