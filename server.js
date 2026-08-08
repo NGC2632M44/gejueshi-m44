@@ -33,7 +33,7 @@ app.get("/api/audio-list", (req, res) => {
   try {
     const files = fs.readdirSync(audioDir)
       .filter(f => /\.(mp3|wav|flac|m4a|ogg|aac|wma)$/i.test(f))
-      .sort();
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
     res.json({ success: true, files, dir: audioDir });
   } catch (e) {
     res.json({ success: false, files: [], error: e.message });

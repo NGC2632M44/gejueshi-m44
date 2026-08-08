@@ -2026,7 +2026,7 @@ async function loadAudioList() {
     const data = await res.json();
     sel.innerHTML = "";
     if (data.success && data.files.length) {
-      data.files.forEach(f => {
+      [...data.files].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })).forEach(f => {
         const opt = document.createElement("option");
         opt.value = "audio/" + f;
         opt.textContent = f;
