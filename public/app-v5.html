@@ -445,8 +445,9 @@ details.manual .tip{font:11px/1.7 var(--f-sans);color:var(--ink-3);margin:10px 0
         </div>
         <div class="btn-row">
           <div class="field" style="flex:0 0 auto"><label>评分对象</label><select id="rating-scope" onchange="saveDraft()"><option value="song">单曲（专辑分仅作背景）</option><option value="album">专辑（专辑分作锚点）</option></select></div>
-          <button class="btn ghost" id="btn-final" onclick="runScoring(true)">🎯 一锤定音</button>
-          <button class="btn" id="btn-score" onclick="runScoring()">生成评分 &amp; 卡片</button>
+          <button class="btn" id="btn-score" onclick="runScoring()">⚡ 全自动生成</button>
+          <button class="btn ghost" id="btn-final" onclick="runScoring(true)">🎯 手动分数 + AI 辅助</button>
+          <button class="btn ghost" id="btn-manual" onclick="openManualEditor()">✍️ 全手动生成</button>
           <span class="inline-status" id="score-status"></span>
         </div>
 
@@ -460,7 +461,7 @@ details.manual .tip{font:11px/1.7 var(--f-sans);color:var(--ink-3);margin:10px 0
 
         <div class="final-copy-editor" id="final-copy-editor" style="display:none;margin-top:14px;border:1px solid var(--gold);border-radius:10px;padding:12px 14px;background:rgba(201,162,77,.04)">
           <div style="font:10px var(--f-mono);color:var(--gold);letter-spacing:2px;width:100%;margin-bottom:6px">📝 最终文案审阅（你有最终编辑权；不改也能直接生成）</div>
-          <div style="font:10px/1.6 var(--f-sans);color:var(--ink-2);margin-bottom:10px">以下是 AI 初稿（已过 AI 自查）。直接改这里就会成为卡片最终文字；你辛苦求证的采样/引用等事实若被 AI 漏掉，在这里补回来即可。</div>
+          <div style="font:10px/1.6 var(--f-sans);color:var(--ink-2);margin-bottom:10px" id="copy-hint">以下是 AI 初稿（已过 AI 自查）。直接改这里就会成为卡片最终文字；你辛苦求证的采样/引用等事实若被 AI 漏掉，在这里补回来即可。</div>
           <div id="copy-dims" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"></div>
           <div class="row" style="margin-top:10px">
             <div class="field" style="flex:2"><label>一句话总评（英文歌建议用英文，中文歌建议用中文）</label><input type="text" id="copy-oneliner" placeholder="AI 初稿" oninput="onCopyEdit(this.id)"></div>
@@ -1665,8 +1666,10 @@ async function runScoring(useFinalWord) {
 
   const btn = $("btn-score");
   const finalBtn = $("btn-final");
+  const manualBtn = $("btn-manual");
   btn.disabled = true;
   if (finalBtn) finalBtn.disabled = true;
+  if (manualBtn) manualBtn.disabled = true;
   busy("score-status", "DeepSeek 评分中…");
   markStep(4, "active", "评分中");
   markStep(3, "done");
@@ -1804,14 +1807,7 @@ async function runScoring(useFinalWord) {
     if (finalWordBody && scoreData.finalWordCompliance === false) {
       toast("⚠️ 一锤定音约束未完全满足（AI 已尽力），请检查分数", "err");
     }
-    const hasLyrics = sc.词 !== null && sc.词 !== undefined;
-    $("hero-of").textContent = "/" + (hasLyrics ? 100 : 80);
-    $("hero-one").textContent = sc.oneLiner ? "「" + sc.oneLiner + "」" : "";
-    $("hero-chips").innerHTML = ["词","曲","编","唱","混"]
-      .filter(d => sc[d] && typeof sc[d].score === "number")
-      .map(d => `<span>${d} <b>${sc[d].score}</b></span>`).join("");
-    $("result-hero").classList.add("show");
-    countUp($("hero-total"), sc.totalScore || 0, 900);
+    showScoreHero(sc);
 
     // AI 自查: 核实事实错误后修正
     busy("score-status", "AI 自查核实中…");
@@ -1862,11 +1858,27 @@ async function runScoring(useFinalWord) {
   }
   btn.disabled = false;
   if (finalBtn) finalBtn.disabled = false;
+  if (manualBtn) manualBtn.disabled = false;
 }
 
 // ═══ 最终文案审阅：AI 初稿 → 用户编辑/确认 → 生成卡片 ═══
+function showScoreHero(sc) {
+  const hasLyrics = sc.词 !== null && sc.词 !== undefined;
+  $("hero-of").textContent = "/" + (hasLyrics ? 100 : 80);
+  $("hero-one").textContent = sc.oneLiner ? "「" + sc.oneLiner + "」" : "";
+  $("hero-chips").innerHTML = ["词", "曲", "编", "唱", "混"]
+    .filter(d => sc[d] && typeof sc[d].score === "number")
+    .map(d => `<span>${d} <b>${sc[d].score}</b></span>`).join("");
+  $("result-hero").classList.add("show");
+  countUp($("hero-total"), sc.totalScore || 0, 900);
+}
+
 function openFinalCopyEditor(scores) {
   const box = $("final-copy-editor");
+  box.dataset.mode = "review";
+  $("copy-hint").textContent = "以下是 AI 初稿（已过 AI 自查）。直接改这里就会成为卡片最终文字；你辛苦求证的采样/引用等事实若被 AI 漏掉，在这里补回来即可。";
+  $("btn-copy-reset").style.display = "";
+  $("btn-copy-confirm").textContent = "确认文案并生成卡片";
   const dimsBox = $("copy-dims");
   const dims = ["词", "曲", "编", "唱", "混"];
   window._copyDirty = {};
@@ -1882,13 +1894,105 @@ function openFinalCopyEditor(scores) {
   box.scrollIntoView({behavior: "smooth", block: "start"});
 }
 
+function openManualEditor() {
+  if (!audioFeatures) return toast("请先完成 Step 1 音频分析", "err");
+  const box = $("final-copy-editor");
+  box.dataset.mode = "manual";
+  $("copy-hint").textContent = "全手动模式：AI 不参与。直接填五维分数（0-20，总分自动相加）、五维乐评、一句话总评与标签，然后生成卡片。";
+  $("btn-copy-reset").style.display = "none";
+  $("btn-copy-confirm").textContent = "手动生成卡片";
+  const dimsBox = $("copy-dims");
+  const dims = ["词", "曲", "编", "唱", "混"];
+  window._copyDirty = {};
+  dimsBox.innerHTML = dims.map(d =>
+    `<div class="field"><label>${d} · 分数 0-20</label>` +
+    `<input type="number" id="copy-score-${d}" min="0" max="20" placeholder="0-20" oninput="onCopyEdit(this.id)" style="margin-bottom:6px">` +
+    `<textarea id="copy-${d}" rows="3" placeholder="${d}维度乐评" oninput="onCopyEdit(this.id)"></textarea></div>`
+  ).join("");
+  $("copy-oneliner").value = "";
+  $("copy-tags").value = "";
+  box.style.display = "block";
+  box.scrollIntoView({behavior: "smooth", block: "start"});
+  setStatus("score-status", "全手动模式：填写分数与文案后生成卡片", "ok");
+  markStep(4, "active", "手动编辑中");
+}
+
 function onCopyEdit(id) {
   // 记录用户真正动过的字段：只有动过的才会覆盖 AI 初稿（清空标签也算修改）
   if (!window._copyDirty) window._copyDirty = {};
   window._copyDirty[id] = true;
 }
 
+function buildManualDraftAndScores() {
+  const dims = ["词", "曲", "编", "唱", "混"];
+  const scores = {};
+  let total = 0;
+  let any = false;
+  for (const d of dims) {
+    const scoreEl = $("copy-score-" + d);
+    const raw = scoreEl ? scoreEl.value : "";
+    const rationale = ($("copy-" + d) ? $("copy-" + d).value : "").trim();
+    if (raw === "") {
+      if (rationale) {
+        toast("请为「" + d + "」填写 0-20 分数", "err");
+        return null;
+      }
+      continue;
+    }
+    const score = Math.round(parseInt(raw, 10));
+    if (!Number.isFinite(score) || score < 0 || score > 20) {
+      toast("「" + d + "」分数需在 0-20 之间", "err");
+      return null;
+    }
+    if (!rationale) {
+      toast("请填写「" + d + "」维度的乐评内容", "err");
+      return null;
+    }
+    scores[d] = { score, rationale };
+    total += score;
+    any = true;
+  }
+  if (!any) {
+    toast("请至少填写一个维度的分数与乐评", "err");
+    return null;
+  }
+  scores.totalScore = total;
+  scores.oneLiner = $("copy-oneliner").value.trim();
+  const tags = $("copy-tags").value.split(/[,，、]/).map(s => s.trim()).filter(Boolean);
+  scores.tags = tags.slice(0, 6);
+
+  const metadata = {
+    artist: $("meta-artist").value.trim(),
+    title: $("meta-title").value.trim(),
+    release_date: $("meta-year").value.trim(),
+    label: $("meta-label").value.trim(),
+    genres: $("meta-genre").value.trim().split(/[,，、]/).map(s => s.trim()).filter(Boolean),
+  };
+  const correctedAF = { ...audioFeatures };
+  const vBpm = $("v-bpm").value.trim();
+  const vKey = $("v-key").value.trim();
+  const vDur = $("v-duration").value.trim();
+  if (vBpm) correctedAF.bpm = parseFloat(vBpm) || correctedAF.bpm;
+  if (vKey) correctedAF.key = vKey;
+  if (vDur) {
+    const dm = vDur.match(/(\d+)\s*s/);
+    correctedAF.duration_seconds = dm ? parseInt(dm[1]) : vDur;
+  }
+  window._cardDraft = {
+    aiScores: JSON.parse(JSON.stringify(scores)),
+    metadata,
+    correctedAF,
+    researchData: researchData || null,
+    rymGenres: $("plat-rym-genres").value.trim() || "",
+    heatData: window._heatData || {},
+    albumName: $("meta-album").value.trim(),
+  };
+  return scores;
+}
+
 function collectEditedScores() {
+  const box = $("final-copy-editor");
+  if (box.dataset.mode === "manual") return buildManualDraftAndScores();
   const draft = window._cardDraft;
   if (!draft) return null;
   const scores = JSON.parse(JSON.stringify(draft.aiScores));
@@ -1906,6 +2010,9 @@ function collectEditedScores() {
 }
 
 function reloadAiCopy() {
+  if (($("final-copy-editor").dataset.mode || "review") === "manual") {
+    return toast("手动模式没有 AI 原文", "warn");
+  }
   const draft = window._cardDraft;
   if (!draft) return toast("请先生成评分", "err");
   openFinalCopyEditor(draft.aiScores);
@@ -1913,6 +2020,14 @@ function reloadAiCopy() {
 }
 
 function confirmCopyAndGenerate() {
+  const box = $("final-copy-editor");
+  if (box.dataset.mode === "manual") {
+    const manual = buildManualDraftAndScores();
+    if (!manual) return;
+    showScoreHero(manual);
+    generateCardFromDraft(manual);
+    return;
+  }
   const draft = window._cardDraft;
   if (!draft) return toast("请先生成评分", "err");
   const edited = collectEditedScores();
@@ -1922,8 +2037,10 @@ function confirmCopyAndGenerate() {
 async function generateCardFromDraft(finalScores) {
   const btn = $("btn-score");
   const finalBtn = $("btn-final");
+  const manualBtn = $("btn-manual");
   btn.disabled = true;
   if (finalBtn) finalBtn.disabled = true;
+  if (manualBtn) manualBtn.disabled = true;
   const draft = window._cardDraft;
   if (!draft) return;
   const { metadata, correctedAF, researchData, rymGenres, heatData, albumName } = draft;
@@ -2000,6 +2117,7 @@ async function generateCardFromDraft(finalScores) {
   }
   btn.disabled = false;
   if (finalBtn) finalBtn.disabled = false;
+  if (manualBtn) manualBtn.disabled = false;
 }
 
 // 自动保存到素材库 (按专辑归类)
