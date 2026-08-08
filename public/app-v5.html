@@ -603,6 +603,8 @@ function restoreDraft() {
       }
     }
     if (hasContent) toast("已恢复上次编辑的草稿", "ok");
+    // 草稿恢复后同步一次：RYM 流派 → Step 4 流派（程序赋值不会触发 oninput）
+    syncGenreFromRYM();
     return hasContent;
   } catch(e) { return false; }
 }
@@ -1663,6 +1665,8 @@ function buildDataPage(af, heatScore, researchData, scores) {
 
 async function runScoring(useFinalWord) {
   if (!audioFeatures) return toast("请先完成 Step 1 音频分析", "err");
+  // 每次生成前都同步一次：RYM 流派优先，RYM 留空回退自动搜索流派
+  syncGenreFromRYM();
 
   const btn = $("btn-score");
   const finalBtn = $("btn-final");
@@ -1896,6 +1900,7 @@ function openFinalCopyEditor(scores) {
 
 function openManualEditor() {
   if (!audioFeatures) return toast("请先完成 Step 1 音频分析", "err");
+  syncGenreFromRYM();
   const box = $("final-copy-editor");
   box.dataset.mode = "manual";
   $("copy-hint").textContent = "全手动模式：AI 不参与。直接填五维分数（0-20，总分自动相加）、五维乐评、一句话总评与标签，然后生成卡片。";
