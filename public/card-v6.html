@@ -67,6 +67,7 @@ body{
 .cover-top .brand{font:700 15px var(--f-mono);letter-spacing:6px}
 .cover-top .brand b{color:var(--accent);font-weight:400}
 .cover-top .date{font:10px var(--f-mono);letter-spacing:2px;color:rgba(243,238,226,.6);text-align:right;line-height:1.9}
+.cover-top .cover-album{font:9px var(--f-mono);letter-spacing:3px;color:rgba(243,238,226,.42);text-transform:uppercase;text-align:center;max-width:44%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-top:3px}
 .sleeve-zone{flex:1;display:flex;align-items:center;justify-content:center;padding:0;min-height:0}
 .sleeve{width:288px;height:288px;position:relative;background-size:cover;background-position:center;
   border:1px solid rgba(243,238,226,.28);
@@ -429,7 +430,7 @@ function thumbImg(data, size){
   var letter = escapeHTML(((data.artist || data.title || "?").trim().charAt(0) || "?").toUpperCase());
   return '<span class="thumb-letter">' + letter + '</span>';
 }
-function metaOf(data){ return [data.year, data.label, data.genre].filter(Boolean).join(" · "); }
+function metaOf(data){ return [data.album, data.year, data.label, data.genre].filter(Boolean).join(" · "); }
 function localDate(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function dateOf(data){
   const m = (data.note || "").match(/\d{4}-\d{2}-\d{2}/);
@@ -454,7 +455,8 @@ function oneLinerWrap(text) {
 function renderCoverPage(data) {
   const heat = getHeatScore(data);
   const hue = hashHue((data.artist||"") + (data.title||""));
-  const meta = metaOf(data);
+  // 封面页：专辑名单独放顶部小字，meta 行不再重复
+  const meta = [data.year, data.label, data.genre].filter(Boolean).join(" · ");
   const full = activeDims(data.scores).length * maxScore;
   const sleeve = data.coverUrl
     ? '<div class="sleeve" style="background-image:url(\'' + escapeHTML(data.coverUrl) + '\')"></div>'
@@ -464,6 +466,7 @@ function renderCoverPage(data) {
     '<div class="inner">' +
       '<div class="cover-top">' +
         '<div class="brand">M44 <b>/</b> ' + (data.mode === "album" ? 'ALBUM CARD' : 'SOUND ANATOMY') + '</div>' +
+        (data.album && data.mode !== "album" ? '<div class="cover-album">ALBUM · ' + escapeHTML(data.album) + '</div>' : "") +
         '<div class="date">' + (data.mode === "album" ? 'ALBUM REVIEW' : 'REVIEW REPORT') + '<br>' + dateOf(data) + '</div>' +
       '</div>' +
       (data.mode === "album" && data.trackCount ? '<div style="position:relative;z-index:2;text-align:center;padding:4px 0"><span style="font:9px var(--f-mono);letter-spacing:3px;color:rgba(243,238,226,.45)">' + data.trackCount + ' TRACKS AGGREGATED</span></div>' : "") +

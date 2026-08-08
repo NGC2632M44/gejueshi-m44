@@ -1930,6 +1930,7 @@ async function generateCardFromDraft(finalScores) {
       body: JSON.stringify({
         artist: metadata.artist || "Unknown",
         title: metadata.title || (audioFeatures && audioFeatures.file) || "Unknown",
+        album: albumName || "",
         year: metadata.release_date || "",
         label: metadata.label || "",
         genre: (metadata.genres || []).join(", "),
